@@ -24,6 +24,7 @@
 #include <CLucene/util/NumericUtils.h>
 
 #include "common/config.h"
+#include "exprs/range_predicate.h"
 #include "gutil/strings/strip.h"
 #include "io/fs/file_system.h"
 #include "olap/key_coder.h"
@@ -109,7 +110,8 @@ Status FullTextIndexReader::new_iterator(const TabletIndex* index_meta,
 Status FullTextIndexReader::query(const std::string& column_name, const void* query_value,
                                   InvertedIndexQueryType query_type,
                                   InvertedIndexParserType analyser_type,
-                                  roaring::Roaring* bit_map) {
+                                  roaring::Roaring* bit_map,
+                                  const void* additional_value) {
     std::string search_str = reinterpret_cast<const StringValue*>(query_value)->to_string();
     VLOG_DEBUG << column_name
                << " begin to load the fulltext index from clucene, query_str=" << search_str;
@@ -209,7 +211,8 @@ Status StringTypeInvertedIndexReader::new_iterator(const TabletIndex* index_meta
 Status StringTypeInvertedIndexReader::query(const std::string& column_name, const void* query_value,
                                             InvertedIndexQueryType query_type,
                                             InvertedIndexParserType analyser_type,
-                                            roaring::Roaring* bit_map) {
+                                            roaring::Roaring* bit_map,
+                                            const void* additional_value) {
     const StringValue* search_query = reinterpret_cast<const StringValue*>(query_value);
     auto act_len = strnlen(search_query->ptr, search_query->len);
     std::string search_str(search_query->ptr, act_len);
@@ -321,7 +324,8 @@ Status BkdIndexReader::new_iterator(const TabletIndex* index_meta,
 Status BkdIndexReader::bkd_query(const std::string& column_name, const void* query_value,
                                  InvertedIndexQueryType query_type,
                                  std::shared_ptr<lucene::util::bkd::bkd_reader>&& r,
-                                 InvertedIndexVisitor* visitor) {
+                                 InvertedIndexVisitor* visitor,
+                                 const void* additional_value) {
     lucene::util::bkd::bkd_reader* tmp_reader;
     auto status = get_bkd_reader(tmp_reader);
     if (!status.ok()) {
@@ -351,6 +355,15 @@ Status BkdIndexReader::bkd_query(const std::string& column_name, const void* que
         _value_key_coder->full_encode_ascending(tmp, &visitor->queryMax);
         break;
     }
+    case InvertedIndexQueryType::RANGE_QUERY:
+    case InvertedIndexQueryType::RANGE_LESS_EQUAL_QUERY:
+    case InvertedIndexQueryType::RANGE_GREATER_EQUAL_QUERY:
+    case InvertedIndexQueryType::RANGE_LESS_GREATER_EQUAL_QUERY: {
+        DCHECK(additional_value != nullptr);
+        _value_key_coder->full_encode_ascending(query_value, &visitor->queryMin);
+        _value_key_coder->full_encode_ascending(additional_value, &visitor->queryMax);
+        break;
+    }
     default:
         LOG(ERROR) << "invalid query type when query bkd index";
         return Status::Error<ErrorCode::INVERTED_INDEX_NOT_SUPPORTED>();
@@ -361,13 +374,15 @@ Status BkdIndexReader::bkd_query(const std::string& column_name, const void* que
 
 Status BkdIndexReader::try_query(const std::string& column_name, const void* query_value,
                                  InvertedIndexQueryType query_type,
-                                 InvertedIndexParserType analyser_type, uint32_t* count) {
+                                 InvertedIndexParserType analyser_type, uint32_t* count,
+                                 const void* additional_value) {
     uint64_t start = UnixMillis();
     auto visitor = std::make_unique<InvertedIndexVisitor>(nullptr, query_type, true);
     std::shared_ptr<lucene::util::bkd::bkd_reader> r;
     try {
         RETURN_IF_ERROR(
-                bkd_query(column_name, query_value, query_type, std::move(r), visitor.get()));
+                bkd_query(column_name, query_value, query_type, std::move(r), visitor.get(),
+                          additional_value));
         *count = r->estimate_point_count(visitor.get());
     } catch (const CLuceneError& e) {
         LOG(WARNING) << "BKD Query CLuceneError Occurred, error msg: " << e.what();
@@ -381,13 +396,15 @@ Status BkdIndexReader::try_query(const std::string& column_name, const void* que
 
 Status BkdIndexReader::query(const std::string& column_name, const void* query_value,
                              InvertedIndexQueryType query_type,
-                             InvertedIndexParserType analyser_type, roaring::Roaring* bit_map) {
+                             InvertedIndexParserType analyser_type, roaring::Roaring* bit_map,
+                             const void* additional_value) {
     uint64_t start = UnixMillis();
     auto visitor = std::make_unique<InvertedIndexVisitor>(bit_map, query_type);
     std::shared_ptr<lucene::util::bkd::bkd_reader> r;
     try {
         RETURN_IF_ERROR(
-                bkd_query(column_name, query_value, query_type, std::move(r), visitor.get()));
+                bkd_query(column_name, query_value, query_type, std::move(r), visitor.get(),
+                          additional_value));
         r->intersect(visitor.get());
     } catch (const CLuceneError& e) {
         LOG(WARNING) << "BKD Query CLuceneError Occurred, error msg: " << e.what();
@@ -466,6 +483,51 @@ bool InvertedIndexVisitor::matches(uint8_t* packedValue) {
                         packedValue, offset, offset + reader->bytes_per_dim_,
                         (const uint8_t*)queryMin.c_str(), offset,
                         offset + reader->bytes_per_dim_) <= 0) {
+                // Doc's value is too high, in this dimension
+                return false;
+            }
+        } else if (query_type == InvertedIndexQueryType::RANGE_QUERY) {
+            if (lucene::util::FutureArrays::CompareUnsigned(
+                        packedValue, offset, offset + reader->bytes_per_dim_,
+                        (const uint8_t*)queryMin.c_str(), offset,
+                        offset + reader->bytes_per_dim_) <= 0) {
+                // Doc's value is too low, in this dimension
+                return false;
+            }
+            if (lucene::util::FutureArrays::CompareUnsigned(
+                        packedValue, offset, offset + reader->bytes_per_dim_,
+                        (const uint8_t*)queryMax.c_str(), offset,
+                        offset + reader->bytes_per_dim_) >= 0) {
+                // Doc's value is too high, in this dimension
+                return false;
+            }
+        } else if (query_type == InvertedIndexQueryType::RANGE_LESS_EQUAL_QUERY) {
+            if (lucene::util::FutureArrays::CompareUnsigned(
+                        packedValue, offset, offset + reader->bytes_per_dim_,
+                        (const uint8_t*)queryMin.c_str(), offset,
+                        offset + reader->bytes_per_dim_) <= 0) {
+                // Doc's value is too low, in this dimension
+                return false;
+            }
+            if (lucene::util::FutureArrays::CompareUnsigned(
+                        packedValue, offset, offset + reader->bytes_per_dim_,
+                        (const uint8_t*)queryMax.c_str(), offset,
+                        offset + reader->bytes_per_dim_) > 0) {
+                // Doc's value is too high, in this dimension
+                return false;
+            }
+        } else if (query_type == InvertedIndexQueryType::RANGE_GREATER_EQUAL_QUERY) {
+            if (lucene::util::FutureArrays::CompareUnsigned(
+                        packedValue, offset, offset + reader->bytes_per_dim_,
+                        (const uint8_t*)queryMin.c_str(), offset,
+                        offset + reader->bytes_per_dim_) < 0) {
+                // Doc's value is too low, in this dimension
+                return false;
+            }
+            if (lucene::util::FutureArrays::CompareUnsigned(
+                        packedValue, offset, offset + reader->bytes_per_dim_,
+                        (const uint8_t*)queryMax.c_str(), offset,
+                        offset + reader->bytes_per_dim_) >= 0) {
                 // Doc's value is too high, in this dimension
                 return false;
             }
@@ -618,12 +680,15 @@ Status InvertedIndexIterator::read_from_inverted_index(const std::string& column
                                                        const void* query_value,
                                                        InvertedIndexQueryType query_type,
                                                        uint32_t segment_num_rows,
-                                                       roaring::Roaring* bit_map, bool skip_try) {
+                                                       roaring::Roaring* bit_map, bool skip_try,
+                                                       const void* additional_value) {
     if (!skip_try && _reader->type() == InvertedIndexReaderType::BKD) {
         auto query_bkd_limit_percent = config::query_bkd_inverted_index_limit_percent;
         uint32_t hit_count = 0;
         RETURN_IF_ERROR(
-                try_read_from_inverted_index(column_name, query_value, query_type, &hit_count));
+                try_read_from_inverted_index(column_name, query_value,
+                                             query_type, &hit_count,
+                                             additional_value));
         if (hit_count > segment_num_rows * query_bkd_limit_percent / 100) {
             LOG(INFO) << "hit count: " << hit_count << "for bkd inverted reached limit "
                       << query_bkd_limit_percent << "%, segment num rows: " << segment_num_rows;
@@ -631,22 +696,29 @@ Status InvertedIndexIterator::read_from_inverted_index(const std::string& column
         }
     }
 
-    RETURN_IF_ERROR(_reader->query(column_name, query_value, query_type, _analyser_type, bit_map));
+    RETURN_IF_ERROR(_reader->query(column_name, query_value, query_type,
+                                   _analyser_type, bit_map, additional_value));
     return Status::OK();
 }
 
 Status InvertedIndexIterator::try_read_from_inverted_index(const std::string& column_name,
                                                            const void* query_value,
                                                            InvertedIndexQueryType query_type,
-                                                           uint32_t* count) {
+                                                           uint32_t* count,
+                                                           const void* additional_value) {
     // NOTE: only bkd index support try read now.
     if (query_type == InvertedIndexQueryType::GREATER_EQUAL_QUERY ||
         query_type == InvertedIndexQueryType::GREATER_THAN_QUERY ||
         query_type == InvertedIndexQueryType::LESS_EQUAL_QUERY ||
         query_type == InvertedIndexQueryType::LESS_THAN_QUERY ||
-        query_type == InvertedIndexQueryType::EQUAL_QUERY) {
+        query_type == InvertedIndexQueryType::EQUAL_QUERY ||
+        query_type == InvertedIndexQueryType::RANGE_QUERY||
+        query_type == InvertedIndexQueryType::RANGE_LESS_EQUAL_QUERY ||
+        query_type == InvertedIndexQueryType::RANGE_GREATER_EQUAL_QUERY ||
+        query_type == InvertedIndexQueryType::RANGE_LESS_GREATER_EQUAL_QUERY) {
         RETURN_IF_ERROR(
-                _reader->try_query(column_name, query_value, query_type, _analyser_type, count));
+                _reader->try_query(column_name, query_value, query_type,
+                                   _analyser_type, count, additional_value));
     }
     return Status::OK();
 }

@@ -59,6 +59,10 @@ enum class InvertedIndexQueryType {
     MATCH_ANY_QUERY = 5,
     MATCH_ALL_QUERY = 6,
     MATCH_PHRASE_QUERY = 7,
+    RANGE_QUERY = 8, // (100, 200)
+    RANGE_LESS_EQUAL_QUERY = 9, // (100, 200]
+    RANGE_GREATER_EQUAL_QUERY = 10, // [100, 200)
+    RANGE_LESS_GREATER_EQUAL_QUERY = 11, // [100, 200]
 };
 
 class InvertedIndexReader {
@@ -73,10 +77,11 @@ public:
                                 InvertedIndexIterator** iterator) = 0;
     virtual Status query(const std::string& column_name, const void* query_value,
                          InvertedIndexQueryType query_type, InvertedIndexParserType analyser_type,
-                         roaring::Roaring* bit_map) = 0;
+                         roaring::Roaring* bit_map, const void* additional_value = nullptr) = 0;
     virtual Status try_query(const std::string& column_name, const void* query_value,
                              InvertedIndexQueryType query_type,
-                             InvertedIndexParserType analyser_type, uint32_t* count) = 0;
+                             InvertedIndexParserType analyser_type, uint32_t* count,
+                             const void* additional_value = nullptr) = 0;
 
     virtual InvertedIndexReaderType type() = 0;
     bool indexExists(io::Path& index_file_path);
@@ -101,10 +106,10 @@ public:
     Status new_iterator(const TabletIndex* index_meta, InvertedIndexIterator** iterator) override;
     Status query(const std::string& column_name, const void* query_value,
                  InvertedIndexQueryType query_type, InvertedIndexParserType analyser_type,
-                 roaring::Roaring* bit_map) override;
+                 roaring::Roaring* bit_map, const void* additional_value = nullptr) override;
     Status try_query(const std::string& column_name, const void* query_value,
                      InvertedIndexQueryType query_type, InvertedIndexParserType analyser_type,
-                     uint32_t* count) override {
+                     uint32_t* count, const void* additional_value = nullptr) override {
         return Status::Error<ErrorCode::NOT_IMPLEMENTED_ERROR>();
     }
 
@@ -125,10 +130,10 @@ public:
     Status new_iterator(const TabletIndex* index_meta, InvertedIndexIterator** iterator) override;
     Status query(const std::string& column_name, const void* query_value,
                  InvertedIndexQueryType query_type, InvertedIndexParserType analyser_type,
-                 roaring::Roaring* bit_map) override;
+                 roaring::Roaring* bit_map, const void* additional_value = nullptr) override;
     Status try_query(const std::string& column_name, const void* query_value,
                      InvertedIndexQueryType query_type, InvertedIndexParserType analyser_type,
-                     uint32_t* count) override {
+                     uint32_t* count, const void* additional_value = nullptr) override {
         return Status::Error<ErrorCode::NOT_IMPLEMENTED_ERROR>();
     }
     InvertedIndexReaderType type() override;
@@ -183,14 +188,15 @@ public:
 
     Status query(const std::string& column_name, const void* query_value,
                  InvertedIndexQueryType query_type, InvertedIndexParserType analyser_type,
-                 roaring::Roaring* bit_map) override;
+                 roaring::Roaring* bit_map, const void* additional_value = nullptr) override;
     Status try_query(const std::string& column_name, const void* query_value,
                      InvertedIndexQueryType query_type, InvertedIndexParserType analyser_type,
-                     uint32_t* count) override;
+                     uint32_t* count, const void* additional_value = nullptr) override;
     Status bkd_query(const std::string& column_name, const void* query_value,
                      InvertedIndexQueryType query_type,
                      std::shared_ptr<lucene::util::bkd::bkd_reader>&& r,
-                     InvertedIndexVisitor* visitor);
+                     InvertedIndexVisitor* visitor,
+                     const void* additional_value = nullptr);
 
     InvertedIndexReaderType type() override;
     Status get_bkd_reader(lucene::util::bkd::bkd_reader*& reader);
@@ -211,9 +217,11 @@ public:
 
     Status read_from_inverted_index(const std::string& column_name, const void* query_value,
                                     InvertedIndexQueryType query_type, uint32_t segment_num_rows,
-                                    roaring::Roaring* bit_map, bool skip_try = false);
+                                    roaring::Roaring* bit_map, bool skip_try = false,
+                                    const void* additional_value = nullptr);
     Status try_read_from_inverted_index(const std::string& column_name, const void* query_value,
-                                        InvertedIndexQueryType query_type, uint32_t* count);
+                                        InvertedIndexQueryType query_type, uint32_t* count,
+                                        const void* additional_value = nullptr);
 
     InvertedIndexParserType get_inverted_index_analyser_type() const;
 

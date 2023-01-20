@@ -125,6 +125,11 @@ private:
     Status _get_row_ranges_from_conditions(RowRanges* condition_row_ranges);
     Status _apply_bitmap_index();
     Status _apply_inverted_index();
+    Status _extract_range_predicate();
+    ColumnPredicate* _format_range_predicate(ColumnId column_id,
+                                             std::unordered_set<ColumnPredicate*> predicates);
+    std::vector<ColumnPredicate*> _parse_range_predicate(std::vector<ColumnPredicate*> remaining_predicates);
+    std::vector<ColumnPredicate*> _get_origin_predicate(ColumnPredicate* col_pred);
 
     Status _apply_index_except_leafnode_of_andnode();
     Status _apply_bitmap_index_except_leafnode_of_andnode(ColumnPredicate* pred,

@@ -51,6 +51,7 @@ enum class PredicateType {
     BF = 11,            // BloomFilter
     BITMAP_FILTER = 12, // BitmapFilter
     MATCH = 13,         // fulltext match
+    RANGE = 14, // range predicate for bkd index
 };
 
 inline std::string type_to_string(PredicateType type) {
@@ -215,6 +216,8 @@ public:
             return "bf";
         case PredicateType::MATCH:
             return "match";
+        case PredicateType::RANGE:
+            return "range";
         default:
             return "unknown";
         }
