@@ -289,7 +289,7 @@ CONF_mInt32(vertical_compaction_num_columns_per_group, "5");
 // In vertical compaction, max memory usage for row_source_buffer
 CONF_Int32(vertical_compaction_max_row_source_memory_mb, "200");
 // In vertical compaction, max dest segment file size
-CONF_mInt64(vertical_compaction_max_segment_size, "10737418240");
+CONF_mInt64(vertical_compaction_max_segment_size, "268435456");
 
 // In ordered data compaction, min segment size for input rowset
 CONF_mInt32(ordered_data_compaction_min_segment_size, "10485760");
@@ -510,7 +510,7 @@ CONF_mInt64(load_channel_memory_refresh_sleep_time_ms, "100");
 CONF_Int32(memory_max_alignment, "16");
 
 // max write buffer size before flush, default 200MB
-CONF_mInt64(write_buffer_size, "4294967295");
+CONF_mInt64(write_buffer_size, "209715200");
 // max buffer size used in memtable for the aggregated table, default 400MB
 CONF_mInt64(write_buffer_size_for_agg, "419430400");
 
