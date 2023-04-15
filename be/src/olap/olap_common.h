@@ -355,6 +355,7 @@ struct OlapReaderStatistics {
     int64_t inverted_index_searcher_bitmap_timer = 0;
 
     int64_t output_index_result_column_timer = 0;
+    int64_t build_index_result_column_timer = 0;
     // number of segment filtered by column stat when creating seg iterator
     int64_t filtered_segment_number = 0;
     // total number of segment

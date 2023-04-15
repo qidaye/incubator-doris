@@ -289,7 +289,7 @@ CONF_mInt32(vertical_compaction_num_columns_per_group, "5");
 // In vertical compaction, max memory usage for row_source_buffer
 CONF_Int32(vertical_compaction_max_row_source_memory_mb, "200");
 // In vertical compaction, max dest segment file size
-CONF_mInt64(vertical_compaction_max_segment_size, "268435456");
+CONF_mInt64(vertical_compaction_max_segment_size, "10737418240");
 
 // In ordered data compaction, min segment size for input rowset
 CONF_mInt32(ordered_data_compaction_min_segment_size, "10485760");
@@ -352,6 +352,7 @@ CONF_mInt32(cumulative_compaction_rounds_for_each_base_compaction_round, "9");
 // Threshold to logging compaction trace, in seconds.
 CONF_mInt32(base_compaction_trace_threshold, "60");
 CONF_mInt32(cumulative_compaction_trace_threshold, "10");
+CONF_mBool(enable_level_cumulative_compaction, "true");
 CONF_mBool(disable_compaction_trace_log, "true");
 
 // Thread count to do tablet meta checkpoint, -1 means use the data directories count.
@@ -509,7 +510,7 @@ CONF_mInt64(load_channel_memory_refresh_sleep_time_ms, "100");
 CONF_Int32(memory_max_alignment, "16");
 
 // max write buffer size before flush, default 200MB
-CONF_mInt64(write_buffer_size, "209715200");
+CONF_mInt64(write_buffer_size, "4294967295");
 // max buffer size used in memtable for the aggregated table, default 400MB
 CONF_mInt64(write_buffer_size_for_agg, "419430400");
 
@@ -919,6 +920,7 @@ CONF_mDouble(inverted_index_ram_buffer_size, "512");
 CONF_Int32(query_bkd_inverted_index_limit_percent, "5"); // 5%
 // dict path for chinese analyzer
 CONF_String(inverted_index_dict_path, "${DORIS_HOME}/dict");
+CONF_Int32(inverted_index_read_buffer_size, "4096");
 // tree depth for bkd index
 CONF_Int32(max_depth_in_bkd_tree, "32");
 // use num_broadcast_buffer blocks as buffer to do broadcast
@@ -928,6 +930,10 @@ CONF_Bool(enable_parse_multi_dimession_array, "true");
 
 // Report a tablet as bad when io errors occurs more than this value.
 CONF_mInt64(max_tablet_io_errors, "-1");
+CONF_Bool(disable_compression_for_load, "true");
+CONF_Bool(disable_inverted_index_for_load, "true");
+CONF_Bool(disable_fulltext_index_for_load, "false");
+
 
 #ifdef BE_TEST
 // test s3

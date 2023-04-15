@@ -1366,7 +1366,7 @@ void SegmentIterator::_output_non_pred_columns(vectorized::Block* block) {
 
 Status SegmentIterator::_read_columns_by_index(uint32_t nrows_read_limit, uint32_t& nrows_read,
                                                bool set_block_rowid) {
-    SCOPED_RAW_TIMER(&_opts.stats->first_read_ns);
+    //SCOPED_RAW_TIMER(&_opts.stats->first_read_ns);
     do {
         uint32_t range_from;
         uint32_t range_to;
@@ -1688,13 +1688,13 @@ void SegmentIterator::_output_index_result_column(uint16_t* sel_rowid_idx, uint1
         return;
     }
 
-    for (auto iter : _rowid_result_for_index) {
+    for (auto& iter : _rowid_result_for_index) {
         block->insert({vectorized::ColumnUInt8::create(),
                        std::make_shared<vectorized::DataTypeUInt8>(), iter.first});
         if (!iter.second.first) {
             // predicate not in compound query
-            block->get_by_name(iter.first).column =
-                    vectorized::DataTypeUInt8().create_column_const(block->rows(), 1u);
+             block->get_by_name(iter.first).column =
+                     vectorized::DataTypeUInt8().create_column_const(block->rows(), 1u);
             continue;
         }
         _build_index_result_column(sel_rowid_idx, select_size, block, iter.first,
@@ -1706,6 +1706,7 @@ void SegmentIterator::_build_index_result_column(uint16_t* sel_rowid_idx, uint16
                                                  vectorized::Block* block,
                                                  const std::string& pred_result_sign,
                                                  const roaring::Roaring& index_result) {
+    SCOPED_RAW_TIMER(&_opts.stats->build_index_result_column_timer);
     auto index_result_column = vectorized::ColumnUInt8::create();
     vectorized::ColumnUInt8::Container& vec_match_pred = index_result_column->get_data();
     vec_match_pred.resize(block->rows());

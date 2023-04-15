@@ -100,7 +100,7 @@ public:
     Status finalize_footer(uint64_t* segment_file_size);
     Status finalize_footer();
 
-    static void init_column_meta(ColumnMetaPB* meta, uint32_t column_id, const TabletColumn& column,
+    void init_column_meta(ColumnMetaPB* meta, uint32_t column_id, const TabletColumn& column,
                                  TabletSchemaSPtr tablet_schema);
     Slice min_encoded_key();
     Slice max_encoded_key();

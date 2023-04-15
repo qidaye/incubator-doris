@@ -512,6 +512,11 @@ void PlanFragmentExecutor::close() {
                 _sink->close(runtime_state(), Status::InternalError("prepare failed"));
             }
         }
+        LOG(WARNING) << "PROFILE EVERYTIME";
+        std::stringstream ss;
+        _runtime_state->runtime_profile()->compute_time_in_profile();
+        _runtime_state->runtime_profile()->pretty_print(&ss);
+        LOG(INFO) << ss.str();
 
         if (_is_report_success) {
             std::stringstream ss;

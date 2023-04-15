@@ -259,10 +259,13 @@ Status Compaction::do_compaction_impl(int64_t permits) {
                   << ". tablet=" << _tablet->full_name() << ", output_version=" << _output_version
                   << ", disk=" << _tablet->data_dir()->path()
                   << ", segments=" << _input_num_segments << ", input_row_num=" << _input_row_num
+                  << ", input_rowsets=" << _input_rowsets.size()
                   << ", output_row_num=" << _output_rowset->num_rows()
+                  << ", output_data_size=" << _output_rowset->data_disk_size()
                   << ". elapsed time=" << watch.get_elapse_second()
                   << "s. cumulative_compaction_policy="
-                  << (cumu_policy == nullptr ? "quick" : cumu_policy->name());
+                  << (cumu_policy == nullptr ? "quick" : cumu_policy->name())
+                  << ", cu_promotion_size=" << _tablet->cumulative_promotion_size();
         return Status::OK();
     }
     build_basic_info();
@@ -357,9 +360,12 @@ Status Compaction::do_compaction_impl(int64_t permits) {
               << ", current_max_version=" << current_max_version
               << ", disk=" << _tablet->data_dir()->path() << ", segments=" << _input_num_segments
               << ", input_row_num=" << _input_row_num
+              << ", input_rowsets=" << _input_rowsets.size()
               << ", output_row_num=" << _output_rowset->num_rows()
+              << ", output_data_size=" << _output_rowset->data_disk_size()
               << ". elapsed time=" << watch.get_elapse_second()
               << "s. cumulative_compaction_policy=" << cumu_policy->name()
+              << ", cu_promotion_size=" << _tablet->cumulative_promotion_size()
               << ", compact_row_per_second=" << int(_input_row_num / watch.get_elapse_second());
 
     return Status::OK();

@@ -22,6 +22,7 @@
 #include "env/env.h"        // Env
 #include "io/fs/file_writer.h"
 #include "olap/data_dir.h"
+#include "olap/inverted_index_parser.h"
 #include "olap/primary_key_index.h"
 #include "olap/row_cursor.h"                      // RowCursor
 #include "olap/rowset/rowset_writer_context.h"    // RowsetWriterContext
@@ -81,7 +82,11 @@ void SegmentWriter::init_column_meta(ColumnMetaPB* meta, uint32_t column_id,
     meta->set_type(column.type());
     meta->set_length(column.length());
     meta->set_encoding(DEFAULT_ENCODING);
-    meta->set_compression(tablet_schema->compression_type());
+    if (_opts.is_direct_write && config::disable_fulltext_index_for_load) {
+        meta->set_compression(CompressionTypePB::NO_COMPRESSION);
+    } else {
+        meta->set_compression(tablet_schema->compression_type());
+    }
     meta->set_is_nullable(column.is_nullable());
     for (uint32_t i = 0; i < column.get_subtype_count(); ++i) {
         init_column_meta(meta->add_children_columns(), column_id, column.get_sub_column(i),
@@ -146,6 +151,13 @@ Status SegmentWriter::init(const std::vector<uint32_t>& col_ids, bool has_key,
         opts.indexes = _tablet_schema->get_indexes_for_column(column.unique_id());
         for (auto index : opts.indexes) {
             if (!skip_inverted_index && index && index->index_type() == IndexType::INVERTED) {
+		if (_opts.is_direct_write && config::disable_inverted_index_for_load) {
+                    if (get_parser_string_from_properties(index->properties()) == INVERTED_INDEX_PARSER_NONE) {
+                        continue;
+                    } else if (config::disable_fulltext_index_for_load) {
+                        continue;
+                    }
+                }
                 opts.inverted_index = index;
                 // TODO support multiple inverted index
                 break;

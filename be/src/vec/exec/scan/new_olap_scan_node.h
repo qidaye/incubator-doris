@@ -141,6 +141,7 @@ private:
     RuntimeProfile::Counter* _inverted_index_searcher_bitmap_timer = nullptr;
 
     RuntimeProfile::Counter* _output_index_result_column_timer = nullptr;
+    RuntimeProfile::Counter* _build_index_result_column_timer = nullptr;
 
     // number of created olap scanners
     RuntimeProfile::Counter* _num_scanners = nullptr;

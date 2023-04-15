@@ -268,6 +268,12 @@ int SizeBasedCumulativeCompactionPolicy::pick_input_rowsets(
         input_rowsets->push_back(rowset);
     }
 
+    if (total_size < _compaction_min_size && *compaction_score < min_compaction_score) {
+        input_rowsets->clear();
+        *compaction_score = 0;
+        return transient_size;
+    }
+
     if (total_size >= promotion_size) {
         return transient_size;
     }
@@ -286,20 +292,22 @@ int SizeBasedCumulativeCompactionPolicy::pick_input_rowsets(
         return transient_size;
     }
 
-    auto rs_iter = input_rowsets->begin();
-    while (rs_iter != input_rowsets->end()) {
-        auto rs_meta = (*rs_iter)->rowset_meta();
-        int current_level = _level_size(rs_meta->total_disk_size());
-        int remain_level = _level_size(total_size - rs_meta->total_disk_size());
-        // if current level less then remain level, input rowsets contain current rowset
-        // and process return; otherwise, input rowsets do not contain current rowset.
-        if (current_level <= remain_level) {
-            break;
-        }
-        total_size -= rs_meta->total_disk_size();
-        *compaction_score -= rs_meta->get_compaction_score();
+    if (config::enable_level_cumulative_compaction) {
+        auto rs_iter = input_rowsets->begin();
+        while (rs_iter != input_rowsets->end()) {
+            auto rs_meta = (*rs_iter)->rowset_meta();
+            int current_level = _level_size(rs_meta->total_disk_size());
+            int remain_level = _level_size(total_size - rs_meta->total_disk_size());
+            // if current level less then remain level, input rowsets contain current rowset
+            // and process return; otherwise, input rowsets do not contain current rowset.
+            if (current_level <= remain_level) {
+                break;
+            }
+            total_size -= rs_meta->total_disk_size();
+            *compaction_score -= rs_meta->get_compaction_score();
 
-        rs_iter = input_rowsets->erase(rs_iter);
+            rs_iter = input_rowsets->erase(rs_iter);
+        }
     }
 
     VLOG_CRITICAL << "cumulative compaction size_based policy, compaction_score = "

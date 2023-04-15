@@ -91,8 +91,7 @@ Status NewOlapScanner::prepare(const TPaloScanRange& scan_range,
             }
         }
 
-        if (olap_scan_node.__isset.indexes_desc && !olap_scan_node.indexes_desc.empty() &&
-            olap_scan_node.indexes_desc[0].index_id >= 0) {
+        if (olap_scan_node.__isset.indexes_desc) {
             _tablet_schema->update_indexes_from_thrift(olap_scan_node.indexes_desc);
         }
 
@@ -524,6 +523,9 @@ void NewOlapScanner::_update_counters_before_close() {
 
     COUNTER_UPDATE(olap_parent->_output_index_result_column_timer,
                    stats.output_index_result_column_timer);
+    COUNTER_UPDATE(olap_parent->_build_index_result_column_timer,
+                   stats.build_index_result_column_timer);
+
 
     COUNTER_UPDATE(olap_parent->_filtered_segment_counter, stats.filtered_segment_number);
     COUNTER_UPDATE(olap_parent->_total_segment_counter, stats.total_segment_number);

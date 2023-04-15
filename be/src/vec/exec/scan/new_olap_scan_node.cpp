@@ -128,6 +128,7 @@ Status NewOlapScanNode::_init_profile() {
             ADD_TIMER(_segment_profile, "InvertedIndexSearcherGenBitmapTime");
 
     _output_index_result_column_timer = ADD_TIMER(_segment_profile, "OutputIndexResultColumnTimer");
+    _build_index_result_column_timer = ADD_TIMER(_segment_profile, "BuildIndexResultColumnTimer");
 
     _filtered_segment_counter = ADD_COUNTER(_segment_profile, "NumSegmentFiltered", TUnit::UNIT);
     _total_segment_counter = ADD_COUNTER(_segment_profile, "NumSegmentTotal", TUnit::UNIT);

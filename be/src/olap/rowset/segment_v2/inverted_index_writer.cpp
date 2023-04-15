@@ -100,6 +100,7 @@ public:
             }
             _CLLDELETE(_index_writer)
             _index_writer = nullptr;
+	    LOG(INFO) << "Delete index_writer in close.";
         }
 
         if (_doc) {
@@ -169,6 +170,7 @@ public:
         _index_writer->setMergeFactor(MERGE_FACTOR);
         _index_writer->setUseCompoundFile(false);
         _doc->clear();
+	LOG(INFO) << "Create index_writer in fulltext.";
 
         int field_config =
                 lucene::document::Field::STORE_NO | lucene::document::Field::INDEX_NONORMS;
