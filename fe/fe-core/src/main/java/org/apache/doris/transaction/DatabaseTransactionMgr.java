@@ -910,7 +910,7 @@ public class DatabaseTransactionMgr {
                                 }
                             }
 
-			    if (transactionState.isPublishTimeout() && healthReplicaNum > 0) {
+                            if (transactionState.isPublishTimeout() && healthReplicaNum > 0) {
                                 // We can not do any thing except retrying,
                                 // because publish task is assigned a version,
                                 // and doris does not permit discontinuous

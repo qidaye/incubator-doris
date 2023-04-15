@@ -1365,7 +1365,7 @@ Status NewJsonReader::_simdjson_set_column_value(simdjson::ondemand::object* val
     }
 
     // fill missing slot
-    [[maybe_unused]]int nullcount = 0;
+    [[maybe_unused]] int nullcount = 0;
     for (size_t i = 0; i < slot_descs.size(); ++i) {
         if (_seen_columns[i]) {
             continue;

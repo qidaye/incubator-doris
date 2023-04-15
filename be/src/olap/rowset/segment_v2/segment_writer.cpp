@@ -151,8 +151,9 @@ Status SegmentWriter::init(const std::vector<uint32_t>& col_ids, bool has_key,
         opts.indexes = _tablet_schema->get_indexes_for_column(column.unique_id());
         for (auto index : opts.indexes) {
             if (!skip_inverted_index && index && index->index_type() == IndexType::INVERTED) {
-		if (_opts.is_direct_write && config::disable_inverted_index_for_load) {
-                    if (get_parser_string_from_properties(index->properties()) == INVERTED_INDEX_PARSER_NONE) {
+                if (_opts.is_direct_write && config::disable_inverted_index_for_load) {
+                    if (get_parser_string_from_properties(index->properties()) ==
+                        INVERTED_INDEX_PARSER_NONE) {
                         continue;
                     } else if (config::disable_fulltext_index_for_load) {
                         continue;

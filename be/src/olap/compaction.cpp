@@ -359,8 +359,7 @@ Status Compaction::do_compaction_impl(int64_t permits) {
               << ", output_version=" << _output_version
               << ", current_max_version=" << current_max_version
               << ", disk=" << _tablet->data_dir()->path() << ", segments=" << _input_num_segments
-              << ", input_row_num=" << _input_row_num
-              << ", input_rowsets=" << _input_rowsets.size()
+              << ", input_row_num=" << _input_row_num << ", input_rowsets=" << _input_rowsets.size()
               << ", output_row_num=" << _output_rowset->num_rows()
               << ", output_data_size=" << _output_rowset->data_disk_size()
               << ". elapsed time=" << watch.get_elapse_second()

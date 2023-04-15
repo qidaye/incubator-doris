@@ -526,7 +526,6 @@ void NewOlapScanner::_update_counters_before_close() {
     COUNTER_UPDATE(olap_parent->_build_index_result_column_timer,
                    stats.build_index_result_column_timer);
 
-
     COUNTER_UPDATE(olap_parent->_filtered_segment_counter, stats.filtered_segment_number);
     COUNTER_UPDATE(olap_parent->_total_segment_counter, stats.total_segment_number);
 

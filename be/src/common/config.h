@@ -934,7 +934,6 @@ CONF_Bool(disable_compression_for_load, "true");
 CONF_Bool(disable_inverted_index_for_load, "true");
 CONF_Bool(disable_fulltext_index_for_load, "false");
 
-
 #ifdef BE_TEST
 // test s3
 CONF_String(test_s3_resource, "resource");

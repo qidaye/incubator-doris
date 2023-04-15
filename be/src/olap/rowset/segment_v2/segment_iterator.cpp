@@ -689,8 +689,7 @@ bool SegmentIterator::_column_has_fulltext_index(int32_t unique_id) {
 }
 
 inline bool SegmentIterator::_inverted_index_not_support_pred_type(const PredicateType& type) {
-    return type == PredicateType::IS_NULL || type == PredicateType::IS_NOT_NULL ||
-           type == PredicateType::BF || type == PredicateType::BITMAP_FILTER;
+    return type == PredicateType::BF || type == PredicateType::BITMAP_FILTER;
 }
 
 #define all_predicates_are_range_predicate(predicate_set)   \
@@ -1693,8 +1692,8 @@ void SegmentIterator::_output_index_result_column(uint16_t* sel_rowid_idx, uint1
                        std::make_shared<vectorized::DataTypeUInt8>(), iter.first});
         if (!iter.second.first) {
             // predicate not in compound query
-             block->get_by_name(iter.first).column =
-                     vectorized::DataTypeUInt8().create_column_const(block->rows(), 1u);
+            block->get_by_name(iter.first).column =
+                    vectorized::DataTypeUInt8().create_column_const(block->rows(), 1u);
             continue;
         }
         _build_index_result_column(sel_rowid_idx, select_size, block, iter.first,
