@@ -541,12 +541,12 @@ public class DatabaseTransactionMgr {
                                 // then it is not a normal replica
                                 // ignore it but not log it
                                 // for example, a replica is in clone state
-                                if (replica.getLastFailedVersion() < 0) {
-                                    ++successReplicaNum;
-                                } else {
-                                    errorReplicaInfo += " replica [" + replica.getId() + "], lastFailedVersion ["
-                                                        + replica.getLastFailedVersion() + "]";
-                                }
+                                // if (replica.getLastFailedVersion() < 0) {
+                                ++successReplicaNum;
+                                // } else {
+                                //    errorReplicaInfo += " replica [" + replica.getId() + "], lastFailedVersion ["
+                                //                        + replica.getLastFailedVersion() + "]";
+                                // }
                             } else {
                                 errorBackendIdsForTablet.add(tabletBackend);
                                 errorReplicaIds.add(replica.getId());
