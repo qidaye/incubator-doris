@@ -194,7 +194,8 @@ FragmentExecState::FragmentExecState(const TUniqueId& query_id,
 
 Status FragmentExecState::prepare(const TExecPlanFragmentParams& params) {
     if (params.__isset.query_options) {
-        _timeout_second = params.query_options.execution_timeout;
+//        _timeout_second = params.query_options.execution_timeout;
+        _timeout_second = config::query_timeout_second;
     }
 
     if (_fragments_ctx == nullptr) {
