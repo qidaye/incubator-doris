@@ -598,6 +598,7 @@ public class ConnectContext {
                 timeoutTag = "insert";
             }
 
+            timeout = Config.max_cbo_statistics_task_timeout_sec * 1000L;
             if (delta > timeout) {
                 LOG.warn("kill {} timeout, remote: {}, query timeout: {}",
                         timeoutTag, getMysqlChannel().getRemoteHostPortString(), timeout);

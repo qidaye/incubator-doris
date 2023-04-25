@@ -399,7 +399,8 @@ public class Coordinator {
         this.queryOptions.setEnableVectorizedEngine(VectorizedUtil.isVectorized());
         this.queryOptions.setEnablePipelineEngine(VectorizedUtil.isPipeline());
         this.queryOptions.setBeExecVersion(Config.be_exec_version);
-        this.queryOptions.setExecutionTimeout(context.getExecTimeout());
+        // this.queryOptions.setExecutionTimeout(context.getExecTimeout());
+        this.queryOptions.setExecutionTimeout(Config.max_cbo_statistics_task_timeout_sec);
     }
 
     public long getJobId() {
