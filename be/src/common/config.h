@@ -938,6 +938,8 @@ CONF_Bool(disable_fulltext_index_for_load, "false");
 
 // query timeout for log_poc
 CONF_Int32(query_timeout_second, "3600");
+// pick rowset to compact interval
+CONF_Int64(pick_rowset_to_compact_interval, "600");
 
 
 #ifdef BE_TEST
