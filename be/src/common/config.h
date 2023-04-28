@@ -426,6 +426,7 @@ DECLARE_mInt32(cumulative_compaction_rounds_for_each_base_compaction_round);
 // Threshold to logging compaction trace, in seconds.
 DECLARE_mInt32(base_compaction_trace_threshold);
 DECLARE_mInt32(cumulative_compaction_trace_threshold);
+DECLARE_mBool(enable_level_cumulative_compaction);
 DECLARE_mBool(disable_compaction_trace_log);
 
 // Interval to picking rowset to compact, in seconds
