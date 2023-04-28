@@ -870,7 +870,7 @@ public class TabletSchedCtx implements Comparable<TabletSchedCtx> {
             TBackend tSrcBe = new TBackend(srcBe.getHost(), srcBe.getBePort(), srcBe.getHttpPort());
             cloneTask = new CloneTask(destBackendId, dbId, tblId, partitionId, indexId,
                 tabletId, cloneReplica.getId(), schemaHash, Lists.newArrayList(tSrcBe), storageMedium,
-                visibleVersion, (int) (taskTimeoutMs / 1000));
+                srcReplica.getVersion(), (int) (taskTimeoutMs / 1000));
             cloneTask.setPathHash(srcPathHash, destPathHash);
 
             // addReplica() method will add this replica to tablet inverted index too.
@@ -891,7 +891,7 @@ public class TabletSchedCtx implements Comparable<TabletSchedCtx> {
             TBackend tSrcBe = new TBackend(srcBe.getHost(), srcBe.getBePort(), srcBe.getHttpPort());
             cloneTask = new CloneTask(destBackendId, dbId, tblId, partitionId, indexId,
                 tabletId, replica.getId(), schemaHash, Lists.newArrayList(tSrcBe), storageMedium,
-                visibleVersion, (int) (taskTimeoutMs / 1000));
+                srcReplica.getVersion(), (int) (taskTimeoutMs / 1000));
             cloneTask.setPathHash(srcPathHash, destPathHash);
         }
 

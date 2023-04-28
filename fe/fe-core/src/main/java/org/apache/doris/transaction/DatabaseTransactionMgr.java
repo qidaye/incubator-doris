@@ -70,6 +70,7 @@ import java.io.DataOutput;
 import java.io.IOException;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -928,7 +929,8 @@ public class DatabaseTransactionMgr {
                         for (Tablet tablet : index.getTablets()) {
                             int healthReplicaNum = 0;
                             for (Replica replica : tablet.getReplicas()) {
-                                if (!errorReplicaIds.contains(replica.getId()) && replica.getLastFailedVersion() < 0) {
+                                LOG.info("replica id {}", replica.getId());
+                                if (!errorReplicaIds.contains(replica.getId())) {
                                     if (replica.checkVersionCatchUp(partition.getVisibleVersion(), true)) {
                                         ++healthReplicaNum;
                                     }
@@ -943,8 +945,10 @@ public class DatabaseTransactionMgr {
 
                             if (healthReplicaNum < quorumReplicaNum) {
                                 LOG.info("publish version failed for transaction {} on tablet {},"
-                                                + " with only {} replicas less than quorum {}",
-                                        transactionState, tablet, healthReplicaNum, quorumReplicaNum);
+                                                + " with only {} replicas less than quorum {}, errorReplicas {},"
+                                                + " partitionCommitInfoVersion {}",
+                                        transactionState, tablet, healthReplicaNum, quorumReplicaNum,
+                                        Arrays.toString(errorReplicaIds.toArray()), partitionCommitInfo.getVersion());
                                 String errMsg = String.format("publish on tablet %d failed."
                                                 + " succeed replica num %d less than quorum %d."
                                                 + " table: %d, partition: %d, publish version: %d",
