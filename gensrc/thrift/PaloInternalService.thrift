@@ -246,6 +246,7 @@ struct TQueryOptions {
   // use is_report_success any more
   84: optional bool enable_profile = false;
   85: optional bool enable_page_cache = false;
+  87: optional i32 inverted_index_read_mode_threshold = 0;
 }
 
 

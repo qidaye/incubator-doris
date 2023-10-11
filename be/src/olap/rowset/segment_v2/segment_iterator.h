@@ -99,6 +99,28 @@ struct ColumnPredicateInfo {
     std::string query_op;
 };
 
+struct ReadRangeInfo {
+    std::vector<uint32_t> rowids;
+    std::vector<std::pair<uint32_t, uint32_t>> ranges;
+
+    void init(int32_t capacity) {
+        rowids.reserve(capacity / 2);
+        ranges.reserve(capacity / 2);
+    }
+
+    inline void add(uint32_t range_from, uint32_t range_to) {
+        ranges.emplace_back(std::make_pair(range_from, range_to));
+        for (uint32_t i = range_from; i < range_to; i++) {
+            rowids.push_back(i);
+        }
+    }
+
+    inline void clear() {
+        rowids.clear();
+        ranges.clear();
+    }
+};
+
 class SegmentIterator : public RowwiseIterator {
 public:
     SegmentIterator(std::shared_ptr<Segment> segment, SchemaSPtr schema);
@@ -212,6 +234,9 @@ private:
                                        vectorized::MutableColumns& column_block, size_t nrows);
     [[nodiscard]] Status _read_columns_by_index(uint32_t nrows_read_limit, uint32_t& nrows_read,
                                                 bool set_block_rowid);
+    [[nodiscard]] Status _read_continuous_columns_data(
+            const std::vector<std::pair<uint32_t, uint32_t>>& ranges);
+    [[nodiscard]] Status _read_many_columns_data(const std::vector<uint32_t>& rowids);
     void _replace_version_col(size_t num_rows);
     void _init_current_block(vectorized::Block* block,
                              std::vector<vectorized::MutableColumnPtr>& non_pred_vector);
@@ -433,6 +458,8 @@ private:
     bool _record_rowids = false;
     int32_t _tablet_id = 0;
     std::set<int32_t> _output_columns;
+
+    ReadRangeInfo _read_range_info;
 };
 
 } // namespace segment_v2
