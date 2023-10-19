@@ -350,7 +350,6 @@ Status VOlapTablePartitionParam::init() {
 
     _mem_usage = _partition_block.allocated_bytes();
     _mem_tracker->consume(_mem_usage);
-    LOG(INFO) << "partition info " << _partition_block.dump_data();
     return Status::OK();
 }
 
