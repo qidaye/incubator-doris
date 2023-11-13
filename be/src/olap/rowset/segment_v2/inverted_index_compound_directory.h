@@ -21,6 +21,8 @@
 #include <CLucene/store/Directory.h>
 #include <CLucene/store/IndexInput.h>
 #include <CLucene/store/IndexOutput.h>
+#include <CLucene/store/RAMDirectory.h>
+
 #include <stdint.h>
 
 #include <string>
@@ -30,6 +32,7 @@
 #include "io/fs/file_reader_writer_fwd.h"
 #include "io/fs/file_system.h"
 #include "util/lock.h"
+#include "inverted_index_ram_directory.h"
 
 class CLuceneError;
 
@@ -79,6 +82,7 @@ private:
     void create();
     static bool disableLocks;
     bool useCompoundFileWriter {false};
+    DorisRAMDirectory* ram_directory;
 
 protected:
     /// Removes an existing file in the directory.
@@ -93,6 +97,7 @@ public:
 
     const io::FileSystemSPtr& getFileSystem() { return fs; }
     const io::FileSystemSPtr& getCompoundFileSystem() { return compound_fs; }
+    DorisRAMDirectory* getDorisRAMDirectory() { return ram_directory; }
     ~DorisCompoundDirectory() override;
 
     bool list(std::vector<std::string>* names) const override;

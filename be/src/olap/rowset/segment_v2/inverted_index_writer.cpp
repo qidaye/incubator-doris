@@ -108,6 +108,8 @@ public:
     void close() {
         if (_index_writer) {
             _index_writer->close();
+            // write compound files
+            _dir->close();
             if (config::enable_write_index_searcher_cache) {
                 // open index searcher into cache
                 auto index_file_name = InvertedIndexDescriptor::get_index_file_name(
@@ -133,24 +135,6 @@ public:
 
         auto index_path = InvertedIndexDescriptor::get_temporary_index_path(
                 _directory + "/" + _segment_file_name, _index_meta->index_id());
-
-        // LOG(INFO) << "inverted index path: " << index_path;
-        bool exists = false;
-        auto st = _fs->exists(index_path.c_str(), &exists);
-        if (!st.ok()) {
-            LOG(ERROR) << "index_path:"
-                       << " exists error:" << st;
-            return st;
-        }
-        if (exists) {
-            LOG(ERROR) << "try to init a directory:" << index_path << " already exists";
-            return Status::InternalError("init_fulltext_index a directory already exists");
-            //st = _fs->delete_directory(index_path.c_str());
-            //if (!st.ok()) {
-            //    LOG(ERROR) << "delete directory:" << index_path << " error:" << st;
-            //    return st;
-            //}
-        }
 
         _char_string_reader = std::make_unique<lucene::util::SStringReader<char>>();
         CharFilterMap char_filter_map =
@@ -186,7 +170,7 @@ public:
             // ANALYSER_NOT_SET, ANALYSER_NONE use default SimpleAnalyzer
             _analyzer = std::make_unique<lucene::analysis::SimpleAnalyzer<char>>();
         }
-        _index_writer = std::make_unique<lucene::index::IndexWriter>(_dir.get(), _analyzer.get(),
+        _index_writer = std::make_unique<lucene::index::IndexWriter>(_dir->getDorisRAMDirectory(), _analyzer.get(),
                                                                      create, true);
         _index_writer->setMaxBufferedDocs(MAX_BUFFER_DOCS);
         _index_writer->setRAMBufferSizeMB(config::inverted_index_ram_buffer_size);
@@ -460,14 +444,16 @@ public:
                 auto index_path = InvertedIndexDescriptor::get_temporary_index_path(
                         _directory + "/" + _segment_file_name, _index_meta->index_id());
                 dir = DorisCompoundDirectory::getDirectory(_fs, index_path.c_str(), true);
-                write_null_bitmap(null_bitmap_out, dir);
+                // write bkd separated files in ram directory
+                auto ram_dir = ((DorisCompoundDirectory*) dir)->getDorisRAMDirectory();
+                write_null_bitmap(null_bitmap_out, ram_dir);
                 _bkd_writer->max_doc_ = _rid;
                 _bkd_writer->docs_seen_ = _row_ids_seen_for_bkd;
-                data_out = dir->createOutput(
+                data_out = ram_dir->createOutput(
                         InvertedIndexDescriptor::get_temporary_bkd_index_data_file_name().c_str());
-                meta_out = dir->createOutput(
+                meta_out = ram_dir->createOutput(
                         InvertedIndexDescriptor::get_temporary_bkd_index_meta_file_name().c_str());
-                index_out = dir->createOutput(
+                index_out = ram_dir->createOutput(
                         InvertedIndexDescriptor::get_temporary_bkd_index_file_name().c_str());
                 if (data_out != nullptr && meta_out != nullptr && index_out != nullptr) {
                     _bkd_writer->meta_finish(meta_out, _bkd_writer->finish(data_out, index_out),
@@ -481,7 +467,7 @@ public:
                 FINALIZE_OUTPUT(index_out)
                 FINALIZE_OUTPUT(dir)
             } else if constexpr (field_is_slice_type(field_type)) {
-                dir = _index_writer->getDirectory();
+                dir = _dir->getDorisRAMDirectory();
                 write_null_bitmap(null_bitmap_out, dir);
                 close();
             }

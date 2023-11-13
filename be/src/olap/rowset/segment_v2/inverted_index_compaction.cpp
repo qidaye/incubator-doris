@@ -30,10 +30,10 @@ Status compact_column(int32_t index_id, int src_segment_num, int dest_segment_nu
                       std::string index_writer_path, std::string tablet_path,
                       std::vector<std::vector<std::pair<uint32_t, uint32_t>>> trans_vec,
                       std::vector<uint32_t> dest_segment_num_rows) {
-    lucene::store::Directory* dir =
+    DorisCompoundDirectory* dir =
             DorisCompoundDirectory::getDirectory(fs, index_writer_path.c_str(), false);
     lucene::analysis::SimpleAnalyzer<char> analyzer;
-    auto index_writer = _CLNEW lucene::index::IndexWriter(dir, &analyzer, true /* create */,
+    auto index_writer = _CLNEW lucene::index::IndexWriter(dir->getDorisRAMDirectory(), &analyzer, true /* create */,
                                                           true /* closeDirOnShutdown */);
 
     // get compound directory src_index_dirs
@@ -49,14 +49,16 @@ Status compact_column(int32_t index_id, int src_segment_num, int dest_segment_nu
     }
 
     // get dest idx file paths
-    std::vector<lucene::store::Directory*> dest_index_dirs(dest_segment_num);
+    std::vector<DorisCompoundDirectory*> dest_index_dirs(dest_segment_num);
+    std::vector<lucene::store::Directory*> dest_index_ram_dirs(dest_segment_num);
     for (int i = 0; i < dest_segment_num; ++i) {
         // format: rowsetId_segmentId_columnId
         auto path = tablet_path + "/" + dest_index_files[i] + "_" + std::to_string(index_id);
         dest_index_dirs[i] = DorisCompoundDirectory::getDirectory(fs, path.c_str(), true);
+        dest_index_ram_dirs[i] = dest_index_dirs[i]->getDorisRAMDirectory();
     }
 
-    index_writer->indexCompaction(src_index_dirs, dest_index_dirs, trans_vec,
+    index_writer->indexCompaction(src_index_dirs, dest_index_ram_dirs, trans_vec,
                                   dest_segment_num_rows);
 
     index_writer->close();
@@ -73,8 +75,9 @@ Status compact_column(int32_t index_id, int src_segment_num, int dest_segment_nu
     }
     for (auto d : dest_index_dirs) {
         if (d != nullptr) {
-            // NOTE: DO NOT close dest dir here, because it will be closed when dest index writer finalize.
-            //d->close();
+            // ram_dir will be closed when index_writer is closed.
+            // we close dir here to write compound file.
+            d->close();
             _CLDELETE(d);
         }
     }

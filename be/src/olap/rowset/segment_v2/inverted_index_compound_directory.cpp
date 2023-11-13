@@ -21,8 +21,9 @@
 #include "common/status.h"
 #include "io/fs/file_reader.h"
 #include "io/fs/file_writer.h"
-#include "io/fs/path.h"
 #include "util/slice.h"
+#include "CLucene/store/RAMDirectory.h"
+#include "inverted_index_ram_directory.h"
 
 #ifdef _CL_HAVE_IO_H
 #include <io.h>
@@ -99,7 +100,7 @@ CL_NS(store)::Directory* DorisCompoundFileWriter::getDirectory() {
 void DorisCompoundFileWriter::writeCompoundFile() {
     // list files in current dir
     std::vector<std::string> files;
-    directory->list(&files);
+    ((DorisCompoundDirectory*)directory)->getDorisRAMDirectory()->list(&files);
     // remove write.lock file
     auto it = std::find(files.begin(), files.end(), WRITE_LOCK_FILE);
     if (it != files.end()) {
@@ -109,7 +110,7 @@ void DorisCompoundFileWriter::writeCompoundFile() {
     std::vector<std::pair<std::string, int64_t>> sorted_files;
     for (auto file : files) {
         sorted_files.push_back(std::make_pair(
-                file, ((DorisCompoundDirectory*)directory)->fileLength(file.c_str())));
+                file, ((DorisCompoundDirectory*)directory)->getDorisRAMDirectory()->fileLength(file.c_str())));
     }
     std::sort(sorted_files.begin(), sorted_files.end(),
               [](const std::pair<std::string, int64_t>& a,
@@ -199,7 +200,7 @@ void DorisCompoundFileWriter::copyFile(const char* fileName, lucene::store::Inde
                                        uint8_t* buffer, int64_t bufferLength) {
     lucene::store::IndexInput* tmp = nullptr;
     CLuceneError err;
-    if (!directory->openInput(fileName, tmp, err)) {
+    if (!((DorisCompoundDirectory*)directory)->getDorisRAMDirectory()->openInput(fileName, tmp, err)) {
         throw err;
     }
 
@@ -457,6 +458,7 @@ int64_t DorisCompoundDirectory::FSIndexOutput::length() const {
 DorisCompoundDirectory::DorisCompoundDirectory() {
     filemode = 0644;
     this->lockFactory = nullptr;
+    ram_directory = new DorisRAMDirectory();
 }
 
 void DorisCompoundDirectory::init(const io::FileSystemSPtr& _fs, const char* _path,
@@ -485,18 +487,6 @@ void DorisCompoundDirectory::init(const io::FileSystemSPtr& _fs, const char* _pa
 
     if (doClearLockID) {
         lockFactory->setLockPrefix(nullptr);
-    }
-
-    // It's fail checking directory existence in S3.
-    if (fs->type() == io::FileSystemType::S3) {
-        return;
-    }
-    bool exists = false;
-    LOG_AND_THROW_IF_ERROR(fs->exists(directory, &exists), "Doris compound directory init IO error")
-    if (!exists) {
-        auto e = "Doris compound directory init error: " + directory + " is not a directory";
-        LOG(WARNING) << e;
-        _CLTHROWA(CL_ERR_IO, e.c_str());
     }
 }
 
@@ -586,13 +576,6 @@ DorisCompoundDirectory* DorisCompoundDirectory::getDirectory(
 
     const char* file = _file;
 
-    bool exists = false;
-    LOG_AND_THROW_IF_ERROR(_fs->exists(file, &exists), "Get directory exists IO error")
-    if (!exists) {
-        LOG_AND_THROW_IF_ERROR(_fs->create_directory(file),
-                               "Get directory create directory IO error")
-    }
-
     dir = _CLNEW DorisCompoundDirectory();
     dir->init(_fs, file, lock_factory, _cfs, cfs_file);
 
@@ -642,10 +625,11 @@ void DorisCompoundDirectory::close() {
         DorisCompoundFileWriter* cfsWriter = _CLNEW DorisCompoundFileWriter(this);
         // write compound file
         cfsWriter->writeCompoundFile();
-        // delete index path, which contains separated inverted index files
-        deleteDirectory();
         _CLDELETE(cfsWriter)
     }
+    // do real close in ram directory
+    ram_directory->finish();
+    _CLDELETE(ram_directory)
 }
 
 bool DorisCompoundDirectory::doDeleteFile(const char* name) {
