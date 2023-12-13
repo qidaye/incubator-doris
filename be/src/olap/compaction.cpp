@@ -365,6 +365,7 @@ Status Compaction::do_compaction_impl(int64_t permits) {
     }
     COUNTER_UPDATE(_merged_rows_counter, stats.merged_rows);
     COUNTER_UPDATE(_filtered_rows_counter, stats.filtered_rows);
+    VLOG_DEBUG << "write merged rows to output rowset, elapsed time=" << watch.get_elapse_second();
 
     _output_rowset = _output_rs_writer->build();
     if (_output_rowset == nullptr) {
@@ -486,7 +487,7 @@ Status Compaction::do_compaction_impl(int64_t permits) {
 
     // 4. modify rowsets in memory
     RETURN_IF_ERROR(modify_rowsets(&stats));
-
+    VLOG_DEBUG << "modify_rowsets, elapsed time=" << watch.get_elapse_second();
     // 5. update last success compaction time
     int64_t now = UnixMillis();
     // TODO(yingchun): do the judge in Tablet class
@@ -611,6 +612,7 @@ Status Compaction::construct_input_rowset_readers() {
 }
 
 Status Compaction::modify_rowsets(const Merger::Statistics* stats) {
+    OlapStopWatch watch;
     std::vector<RowsetSharedPtr> output_rowsets;
     output_rowsets.push_back(_output_rowset);
 
@@ -715,6 +717,7 @@ Status Compaction::modify_rowsets(const Merger::Statistics* stats) {
         std::lock_guard<std::shared_mutex> wrlock(_tablet->get_header_lock());
         RETURN_IF_ERROR(_tablet->modify_rowsets(output_rowsets, _input_rowsets, true));
     }
+    VLOG_DEBUG << "_tablet->modify_rowsets, elapsed time=" << watch.get_elapse_second();
 
     if (config::tablet_rowset_stale_sweep_by_size &&
         _tablet->tablet_meta()->all_stale_rs_metas().size() >=
@@ -728,6 +731,7 @@ Status Compaction::modify_rowsets(const Merger::Statistics* stats) {
         cur_max_version = _tablet->max_version_unlocked().second;
         _tablet->save_meta();
     }
+    VLOG_DEBUG << "_tablet->save_meta(), elapsed time=" << watch.get_elapse_second();
     if (_tablet->keys_type() == KeysType::UNIQUE_KEYS &&
         _tablet->enable_unique_key_merge_on_write()) {
         auto st = TabletMetaManager::remove_old_version_delete_bitmap(

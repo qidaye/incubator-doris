@@ -813,6 +813,7 @@ public class ReportHandler extends Daemon {
                                             olapTable.getTimeSeriesCompactionGoalSizeMbytes(),
                                             olapTable.getTimeSeriesCompactionFileCountThreshold(),
                                             olapTable.getTimeSeriesCompactionTimeThresholdSeconds(),
+                                            olapTable.getTimeSeriesCompactionEmptyRowsetsThreshold(),
                                             olapTable.storeRowColumn(), olapTable.isDynamicSchema(),
                                             binlogConfig);
 

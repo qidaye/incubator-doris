@@ -208,6 +208,17 @@ public:
         return Status::OK();
     }
 
+    Status add_null_document() {
+        try {
+            _index_writer->addNullDocument(_doc.get());
+        } catch (const CLuceneError& e) {
+            _dir->deleteDirectory();
+            return Status::Error<ErrorCode::INVERTED_INDEX_CLUCENE_ERROR>(
+                    "CLuceneError add_null_document: {}", e.what());
+        }
+        return Status::OK();
+    }
+
     Status add_nulls(uint32_t count) override {
         _null_bitmap.addRange(_rid, _rid + count);
         _rid += count;
@@ -220,7 +231,7 @@ public:
 
             for (int i = 0; i < count; ++i) {
                 new_fulltext_field(empty_value.c_str(), 0);
-                RETURN_IF_ERROR(add_document());
+                RETURN_IF_ERROR(add_null_document());
             }
         }
         return Status::OK();
@@ -263,8 +274,15 @@ public:
             }
             auto* v = (Slice*)values;
             for (int i = 0; i < count; ++i) {
-                new_fulltext_field(v->get_data(), v->get_size());
-                RETURN_IF_ERROR(add_document());
+                if (v->get_size() > 256) {
+                    VLOG_DEBUG << "fulltext index value length can be at most 256, but got "
+                                 << "value length:" << v->get_size() << ", ignore this value";
+                    new_fulltext_field(empty_value.c_str(), 0);
+                    RETURN_IF_ERROR(add_null_document());
+                } else {
+                    new_fulltext_field(v->get_data(), v->get_size());
+                    RETURN_IF_ERROR(add_document());
+                }
                 ++v;
                 _rid++;
             }

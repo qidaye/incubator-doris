@@ -111,7 +111,8 @@ public:
                std::string compaction_policy = "size_based",
                int64_t time_series_compaction_goal_size_mbytes = 1024,
                int64_t time_series_compaction_file_count_threshold = 2000,
-               int64_t time_series_compaction_time_threshold_seconds = 3600);
+               int64_t time_series_compaction_time_threshold_seconds = 3600,
+               int64_t time_series_compaction_empty_rowsets_threshold = 5);
     // If need add a filed in TableMeta, filed init copy in copy construct function
     TabletMeta(const TabletMeta& tablet_meta);
     TabletMeta(TabletMeta&& tablet_meta) = delete;
@@ -133,6 +134,7 @@ public:
     void init_rs_metas_fs(const io::FileSystemSPtr& fs);
 
     void to_meta_pb(TabletMetaPB* tablet_meta_pb);
+    void release_cached_schema_pb(TabletMetaPB* tablet_meta_pb);
     void to_json(std::string* json_string, json2pb::Pb2JsonOptions& options);
     uint32_t mem_size() const;
 
@@ -255,6 +257,12 @@ public:
     int64_t time_series_compaction_time_threshold_seconds() const {
         return _time_series_compaction_time_threshold_seconds;
     }
+    void set_time_series_compaction_empty_rowsets_threshold(int64_t empty_rowsets_threshold) {
+        _time_series_compaction_empty_rowsets_threshold = empty_rowsets_threshold;
+    }
+    int64_t time_series_compaction_empty_rowsets_threshold() const {
+        return _time_series_compaction_empty_rowsets_threshold;
+    }
 
 private:
     Status _save_meta(DataDir* data_dir);
@@ -307,6 +315,7 @@ private:
     int64_t _time_series_compaction_goal_size_mbytes = 0;
     int64_t _time_series_compaction_file_count_threshold = 0;
     int64_t _time_series_compaction_time_threshold_seconds = 0;
+    int64_t _time_series_compaction_empty_rowsets_threshold = 0;
 
     mutable std::shared_mutex _meta_lock;
 };

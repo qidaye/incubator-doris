@@ -237,6 +237,9 @@ Status SnapshotManager::convert_rowset_ids(const std::string& clone_dir, int64_t
         return res;
     }
 
+    // release cached schema_pb
+    cloned_tablet_meta.release_cached_schema_pb(&cloned_tablet_meta_pb);
+    cloned_tablet_meta.release_cached_schema_pb(&new_tablet_meta_pb);
     return Status::OK();
 }
 

@@ -1503,17 +1503,13 @@ Status NewJsonReader::_simdjson_write_data_to_column(simdjson::ondemand::value& 
         break;
     }
     default: {
-        if (value.type() == simdjson::ondemand::json_type::string) {
-            uint8_t* unescape_buffer =
-                    reinterpret_cast<uint8_t*>(&_simdjson_ondemand_unscape_padding_buffer[0]);
-            std::string_view unescaped_value =
-                    _ondemand_json_parser->unescape(value.get_raw_json_string(), unescape_buffer);
-            nullable_column->get_null_map_data().push_back(0);
-            column_string->insert_data(unescaped_value.data(), unescaped_value.length());
-            break;
-        }
         auto value_str = simdjson::to_json_string(value).value();
         nullable_column->get_null_map_data().push_back(0);
+        if (value.type() == simdjson::ondemand::json_type::string) {
+            // trim quotation marks
+            column_string->insert_data(value_str.data() + 1, value_str.length() - 2);
+            break;
+        }
         column_string->insert_data(value_str.data(), value_str.length());
     }
     }

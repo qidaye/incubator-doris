@@ -42,6 +42,7 @@
 #include "olap/page_cache.h"
 #include "olap/rowset/segment_v2/inverted_index_cache.h"
 #include "olap/schema_cache.h"
+//#include "olap/schema_pb_cache.h"
 #include "olap/segment_loader.h"
 #include "pipeline/task_queue.h"
 #include "pipeline/task_scheduler.h"
@@ -292,6 +293,8 @@ Status ExecEnv::_init_mem_env() {
     SegmentLoader::create_global_instance(segment_cache_capacity);
 
     SchemaCache::create_global_instance(config::schema_cache_capacity);
+
+    SchemaPBCache::create_global_instance(config::schema_cache_capacity);
 
     LookupConnectionCache::create_global_instance(config::lookup_connection_cache_bytes_limit);
 

@@ -24,6 +24,7 @@
 #include <gen_cpp/segment_v2.pb.h>
 #include <gen_cpp/types.pb.h>
 #include <json2pb/pb_to_json.h>
+#include <google/protobuf/arena.h>
 #include <time.h>
 
 #include <set>
@@ -68,14 +69,24 @@ Status TabletMeta::create(const TCreateTabletReq& request, const TabletUid& tabl
             std::move(binlog_config), request.compaction_policy,
             request.time_series_compaction_goal_size_mbytes,
             request.time_series_compaction_file_count_threshold,
-            request.time_series_compaction_time_threshold_seconds);
+            request.time_series_compaction_time_threshold_seconds,
+            request.time_series_compaction_empty_rowsets_threshold);
     return Status::OK();
 }
 
 TabletMeta::TabletMeta()
         : _tablet_uid(0, 0),
           _schema(new TabletSchema),
-          _delete_bitmap(new DeleteBitmap(_tablet_id)) {}
+          _delete_bitmap(new DeleteBitmap(_tablet_id)) {
+//    google::protobuf::ArenaOptions options;
+//    options.initial_block_size = config::protobuf_arena_initial_block_size_mb * 1024 * 1024;
+//    options.max_block_size = config::protobuf_arena_max_block_size_mb * 1024 * 1024;
+//    _arena = new google::protobuf::Arena(options);
+}
+
+TabletMeta::~TabletMeta() {
+//    delete _arena;
+}
 
 TabletMeta::TabletMeta(int64_t table_id, int64_t partition_id, int64_t tablet_id,
                        int64_t replica_id, int32_t schema_hash, uint64_t shard_id,
@@ -87,10 +98,15 @@ TabletMeta::TabletMeta(int64_t table_id, int64_t partition_id, int64_t tablet_id
                        std::optional<TBinlogConfig> binlog_config, std::string compaction_policy,
                        int64_t time_series_compaction_goal_size_mbytes,
                        int64_t time_series_compaction_file_count_threshold,
-                       int64_t time_series_compaction_time_threshold_seconds)
+                       int64_t time_series_compaction_time_threshold_seconds,
+                       int64_t time_series_compaction_empty_rowsets_threshold)
         : _tablet_uid(0, 0),
           _schema(new TabletSchema),
           _delete_bitmap(new DeleteBitmap(tablet_id)) {
+//    google::protobuf::ArenaOptions options;
+//    options.initial_block_size = config::protobuf_arena_initial_block_size_mb * 1024 * 1024;
+//    options.max_block_size = config::protobuf_arena_max_block_size_mb * 1024 * 1024;
+//    _arena = new google::protobuf::Arena(options);
     TabletMetaPB tablet_meta_pb;
     tablet_meta_pb.set_table_id(table_id);
     tablet_meta_pb.set_partition_id(partition_id);
@@ -115,6 +131,8 @@ TabletMeta::TabletMeta(int64_t table_id, int64_t partition_id, int64_t tablet_id
             time_series_compaction_file_count_threshold);
     tablet_meta_pb.set_time_series_compaction_time_threshold_seconds(
             time_series_compaction_time_threshold_seconds);
+    tablet_meta_pb.set_time_series_compaction_empty_rowsets_threshold(
+            time_series_compaction_empty_rowsets_threshold);
     TabletSchemaPB* schema = tablet_meta_pb.mutable_schema();
     schema->set_num_short_key_columns(tablet_schema.short_key_column_count);
     schema->set_num_rows_per_row_block(config::default_num_rows_per_column_file_block);
@@ -316,7 +334,9 @@ TabletMeta::TabletMeta(const TabletMeta& b)
           _time_series_compaction_file_count_threshold(
                   b._time_series_compaction_file_count_threshold),
           _time_series_compaction_time_threshold_seconds(
-                  b._time_series_compaction_time_threshold_seconds) {};
+                  b._time_series_compaction_time_threshold_seconds),
+          _time_series_compaction_empty_rowsets_threshold(
+                  b._time_series_compaction_empty_rowsets_threshold){};
 
 void TabletMeta::init_column_from_tcolumn(uint32_t unique_id, const TColumn& tcolumn,
                                           ColumnPB* column) {
@@ -412,7 +432,9 @@ Status TabletMeta::save_as_json(const string& file_path, DataDir* dir) {
 Status TabletMeta::save(const string& file_path) {
     TabletMetaPB tablet_meta_pb;
     to_meta_pb(&tablet_meta_pb);
-    return TabletMeta::save(file_path, tablet_meta_pb);
+    auto status = TabletMeta::save(file_path, tablet_meta_pb);
+    release_cached_schema_pb(&tablet_meta_pb);
+    return status;
 }
 
 Status TabletMeta::save(const string& file_path, const TabletMetaPB& tablet_meta_pb) {
@@ -436,6 +458,7 @@ Status TabletMeta::save_meta(DataDir* data_dir) {
 }
 
 Status TabletMeta::_save_meta(DataDir* data_dir) {
+    OlapStopWatch watch;
     // check if tablet uid is valid
     if (_tablet_uid.hi == 0 && _tablet_uid.lo == 0) {
         LOG(FATAL) << "tablet_uid is invalid"
@@ -443,21 +466,29 @@ Status TabletMeta::_save_meta(DataDir* data_dir) {
     }
     string meta_binary;
     RETURN_IF_ERROR(serialize(&meta_binary));
+    VLOG_DEBUG << "_save_meta serialize, elapsed time=" << watch.get_elapse_second();
     Status status = TabletMetaManager::save(data_dir, tablet_id(), schema_hash(), meta_binary);
     if (!status.ok()) {
         LOG(FATAL) << "fail to save tablet_meta. status=" << status << ", tablet_id=" << tablet_id()
                    << ", schema_hash=" << schema_hash();
     }
+    VLOG_DEBUG << "_save_meta save, elapsed time=" << watch.get_elapse_second();
     return status;
 }
 
 Status TabletMeta::serialize(string* meta_binary) {
+    OlapStopWatch watch;
     TabletMetaPB tablet_meta_pb;
     to_meta_pb(&tablet_meta_pb);
+    VLOG_DEBUG << "to_meta_pb, elapsed time=" << watch.get_elapse_second();
     bool serialize_success = tablet_meta_pb.SerializeToString(meta_binary);
+    VLOG_DEBUG << "SerializeToString, elapsed time=" << watch.get_elapse_second();
     if (!serialize_success) {
         LOG(FATAL) << "failed to serialize meta " << full_name();
     }
+
+    // release cached schema_pb
+    release_cached_schema_pb(&tablet_meta_pb);
     return Status::OK();
 }
 
@@ -587,9 +618,12 @@ void TabletMeta::init_from_pb(const TabletMetaPB& tablet_meta_pb) {
             tablet_meta_pb.time_series_compaction_file_count_threshold();
     _time_series_compaction_time_threshold_seconds =
             tablet_meta_pb.time_series_compaction_time_threshold_seconds();
+    _time_series_compaction_empty_rowsets_threshold =
+            tablet_meta_pb.time_series_compaction_empty_rowsets_threshold();
 }
 
 void TabletMeta::to_meta_pb(TabletMetaPB* tablet_meta_pb) {
+    OlapStopWatch watch;
     tablet_meta_pb->set_table_id(table_id());
     tablet_meta_pb->set_partition_id(partition_id());
     tablet_meta_pb->set_tablet_id(tablet_id());
@@ -617,20 +651,35 @@ void TabletMeta::to_meta_pb(TabletMetaPB* tablet_meta_pb) {
         tablet_meta_pb->set_tablet_state(PB_SHUTDOWN);
         break;
     }
+    VLOG_DEBUG << "set_tablet_state, elapsed time=" << watch.get_elapse_second();
 
     for (auto& rs : _rs_metas) {
         rs->to_rowset_pb(tablet_meta_pb->add_rs_metas());
     }
+    VLOG_DEBUG << "_rs_metas, size=" << _rs_metas.size();
+    VLOG_DEBUG << "to_rowset_pb, elapsed time=" << watch.get_elapse_second();
     for (auto rs : _stale_rs_metas) {
         rs->to_rowset_pb(tablet_meta_pb->add_stale_rs_metas());
     }
-    _schema->to_schema_pb(tablet_meta_pb->mutable_schema());
+    VLOG_DEBUG << "_stale_rs_metas, size=" << _stale_rs_metas.size();
+    VLOG_DEBUG << "stale to_rowset_pb, elapsed time=" << watch.get_elapse_second();
+    std::string schema_pb_key = SchemaPBCache::get_schema_pb_key(_tablet_id, _schema->columns(),
+                                                                 _schema->schema_version());
+    auto cached_schema_pb = SchemaPBCache::instance()->get_schema_pb(schema_pb_key);
+    if (cached_schema_pb) {
+        tablet_meta_pb->set_allocated_schema(cached_schema_pb);
+    } else {
+        auto tablet_schema_pb = tablet_meta_pb->mutable_schema();
+        _schema->to_schema_pb(tablet_schema_pb);
+        SchemaPBCache::instance()->insert_schema_pb(schema_pb_key, tablet_schema_pb);
+    }
 
     tablet_meta_pb->set_in_restore_mode(in_restore_mode());
 
     // to avoid modify tablet meta to the greatest extend
     if (_preferred_rowset_type == BETA_ROWSET) {
         tablet_meta_pb->set_preferred_rowset_type(_preferred_rowset_type);
+        VLOG_DEBUG << "set_preferred_rowset_type, elapsed time=" << watch.get_elapse_second();
     }
     if (_storage_policy_id > 0) {
         tablet_meta_pb->set_storage_policy_id(_storage_policy_id);
@@ -668,6 +717,35 @@ void TabletMeta::to_meta_pb(TabletMetaPB* tablet_meta_pb) {
             time_series_compaction_file_count_threshold());
     tablet_meta_pb->set_time_series_compaction_time_threshold_seconds(
             time_series_compaction_time_threshold_seconds());
+    tablet_meta_pb->set_time_series_compaction_empty_rowsets_threshold(
+            time_series_compaction_empty_rowsets_threshold());
+}
+
+void TabletMeta::release_cached_schema_pb(TabletMetaPB* tablet_meta_pb) {
+    // release cached schema_pb
+    std::string schema_pb_key = SchemaPBCache::get_schema_pb_key(_tablet_id, _schema->columns(),
+                                                                 _schema->schema_version());
+    auto cached_schema_pb = SchemaPBCache::instance()->get_schema_pb(schema_pb_key);
+    if (cached_schema_pb == tablet_meta_pb->mutable_schema()) {
+        auto p = tablet_meta_pb->release_schema();
+        VLOG_DEBUG << "tablet_schema_pb released tablet schema address: " << p;
+    }
+    VLOG_DEBUG << "rs_metas size: " << tablet_meta_pb->rs_metas_size();
+    for (int i = 0; i < tablet_meta_pb->rs_metas_size(); ++i) {
+        auto rs = tablet_meta_pb->mutable_rs_metas(i);
+        if (cached_schema_pb == rs->mutable_tablet_schema()) {
+            auto p = rs->release_tablet_schema();
+            VLOG_DEBUG << "rs_meta released tablet schema address: " << p;
+        }
+    }
+    VLOG_DEBUG << "stale_rs_metas size: " << tablet_meta_pb->stale_rs_metas_size();
+    for (int i = 0; i < tablet_meta_pb->stale_rs_metas_size(); ++i) {
+        auto rs = tablet_meta_pb->mutable_stale_rs_metas(i);
+        if (cached_schema_pb == rs->mutable_tablet_schema()) {
+            auto p = rs->release_tablet_schema();
+            VLOG_DEBUG << "stale rs meta released tablet schema address: " << p;
+        }
+    }
 }
 
 uint32_t TabletMeta::mem_size() const {
@@ -680,6 +758,7 @@ void TabletMeta::to_json(string* json_string, json2pb::Pb2JsonOptions& options) 
     TabletMetaPB tablet_meta_pb;
     to_meta_pb(&tablet_meta_pb);
     json2pb::ProtoMessageToJson(tablet_meta_pb, json_string, options);
+    release_cached_schema_pb(&tablet_meta_pb);
 }
 
 Version TabletMeta::max_version() const {
@@ -900,6 +979,9 @@ bool operator==(const TabletMeta& a, const TabletMeta& b) {
         return false;
     if (a._time_series_compaction_time_threshold_seconds !=
         b._time_series_compaction_time_threshold_seconds)
+        return false;
+    if (a._time_series_compaction_empty_rowsets_threshold !=
+        b._time_series_compaction_empty_rowsets_threshold)
         return false;
     return true;
 }

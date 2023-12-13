@@ -34,6 +34,7 @@
 #include "olap/storage_policy.h"
 #include "olap/tablet_schema.h"
 #include "olap/tablet_schema_cache.h"
+#include "olap/schema_pb_cache.h"
 
 namespace doris {
 
@@ -253,7 +254,16 @@ public:
     void to_rowset_pb(RowsetMetaPB* rs_meta_pb) const {
         *rs_meta_pb = _rowset_meta_pb;
         if (_schema) {
-            _schema->to_schema_pb(rs_meta_pb->mutable_tablet_schema());
+            std::string schema_pb_key = SchemaPBCache::get_schema_pb_key(tablet_id(), _schema->columns(),
+                                                                         _schema->schema_version());
+            auto cached_schema_pb = SchemaPBCache::instance()->get_schema_pb(schema_pb_key);
+            if (cached_schema_pb) {
+                rs_meta_pb->set_allocated_tablet_schema(cached_schema_pb);
+            } else {
+                auto tablet_schema_pb = rs_meta_pb->mutable_tablet_schema();
+                _schema->to_schema_pb(tablet_schema_pb);
+                SchemaPBCache::instance()->insert_schema_pb(schema_pb_key, tablet_schema_pb);
+            }
         }
     }
 
