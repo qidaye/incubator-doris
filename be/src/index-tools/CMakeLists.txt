@@ -25,7 +25,7 @@ add_executable(index_tool
     index_tool.cpp
 )
 
-pch_reuse(index_tool)
+#pch_reuse(index_tool)
 
 # This permits libraries loaded by dlopen to link to the symbols in the program.
 set_target_properties(index_tool PROPERTIES ENABLE_EXPORTS 1)

@@ -23,6 +23,7 @@
 #include <iostream>
 #include <sstream>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "io/fs/local_file_system.h"
@@ -232,6 +233,123 @@ int main(int argc, char** argv) {
         } catch (CLuceneError& err) {
             std::cerr << "error occurred when check_terms_stats: " << err.what() << std::endl;
         }
+    } else if (FLAGS_operation == "index_compact") {
+        auto fs = doris::io::global_local_filesystem();
+        int32_t index_id = 10057;
+        int src_segment_num = 2;
+        int dest_segment_num =1;
+        std::vector<std::string> src_index_files;
+        src_index_files.emplace_back("0200000000000012fa4418fa008ed80c9c2df95e2e94bebe_0");
+        src_index_files.emplace_back("0200000000000013fa4418fa008ed80c9c2df95e2e94bebe_0");
+        std::vector<std::string> dest_index_files;
+        dest_index_files.emplace_back("0200000000000014fa4418fa008ed80c9c2df95e2e94bebe_0");
+        std::string index_writer_path = "/mnt/disk2/luen/clucene/680599304/0200000000000014fa4418fa008ed80c9c2df95e2e94bebe_0";
+//        std::string tablet_path = "/mnt/disk2/luen/mydoris/be/storage/data/14/10061/680599304";
+        std::string tablet_path = "/mnt/disk2/luen/clucene/680599304";
+        // first level size: 2
+        // second level size: 20
+        // 0 10
+        // 0 11
+        // 0 12
+        // 0 13
+        // 0 14
+        // 0 15
+        // 0 16
+        // 0 17
+        // 0 18
+        // 0 19
+        // 0 20
+        // 0 21
+        // 0 22
+        // 0 23
+        // 0 24
+        // 0 25
+        // 0 26
+        // 0 27
+        // 0 28
+        // 0 29
+        // second level size: 10
+        // 0 0
+        // 0 1
+        // 0 2
+        // 0 3
+        // 0 4
+        // 0 5
+        // 0 6
+        // 0 7
+        // 0 8
+        // 0 9
+        std::vector<std::vector<std::pair<uint32_t, uint32_t>>> trans_vec;
+        std::vector<uint32_t> dest_segment_num_rows;
+        dest_segment_num_rows.emplace_back(30);
+        // fill trans_vec
+        std::vector<std::pair<uint32_t, uint32_t>> first_level;
+        for (int i = 10; i <= 29; i++) {
+            std::pair<uint32_t, uint32_t> p = std::make_pair(0, i);
+            first_level.emplace_back(p);
+        }
+        std::vector<std::pair<uint32_t, uint32_t>> second_level;
+        for (int i = 0; i <= 9; i++) {
+            std::pair<uint32_t, uint32_t> p = std::make_pair(0, i);
+            second_level.emplace_back(p);
+        }
+        trans_vec.emplace_back(first_level);
+        trans_vec.emplace_back(second_level);
+
+        lucene::store::Directory* dir =
+            DorisCompoundDirectory::getDirectory(fs, index_writer_path.c_str(), false);
+        lucene::analysis::SimpleAnalyzer<char> analyzer;
+        auto index_writer = _CLNEW lucene::index::IndexWriter(dir, &analyzer, true /* create */,
+                                                            true /* closeDirOnShutdown */);
+        std::ostream* infoStream = &std::cout;
+        index_writer->setInfoStream(infoStream);
+        // get compound directory src_index_dirs
+        std::vector<lucene::store::Directory*> src_index_dirs(src_segment_num);
+        for (int i = 0; i < src_segment_num; ++i) {
+            // format: rowsetId_segmentId_indexId.idx
+            std::string src_idx_full_name =
+                    src_index_files[i] + "_" + std::to_string(index_id) + ".idx";
+            DorisCompoundReader* reader = new DorisCompoundReader(
+                    DorisCompoundDirectory::getDirectory(fs, tablet_path.c_str()),
+                    src_idx_full_name.c_str());
+            src_index_dirs[i] = reader;
+        }
+
+        // get dest idx file paths
+        std::vector<lucene::store::Directory*> dest_index_dirs(dest_segment_num);
+        for (int i = 0; i < dest_segment_num; ++i) {
+            // format: rowsetId_segmentId_columnId
+            auto path = tablet_path + "/" + dest_index_files[i] + "_" + std::to_string(index_id);
+            dest_index_dirs[i] = DorisCompoundDirectory::getDirectory(fs, path.c_str(), true);
+        }
+
+        index_writer->indexCompaction(src_index_dirs, dest_index_dirs, trans_vec,
+                                    dest_segment_num_rows);
+
+        index_writer->close();
+        _CLDELETE(index_writer);
+        // NOTE: need to ref_cnt-- for dir,
+        // when index_writer is destroyed, if closeDir is set, dir will be close
+        // _CLDECDELETE(dir) will try to ref_cnt--, when it decreases to 1, dir will be destroyed.
+        _CLDECDELETE(dir)
+        for (auto d : src_index_dirs) {
+            if (d != nullptr) {
+                d->close();
+                _CLDELETE(d);
+            }
+        }
+        for (auto d : dest_index_dirs) {
+            if (d != nullptr) {
+                // NOTE: DO NOT close dest dir here, because it will be closed when dest index writer finalize.
+                //d->close();
+                _CLDELETE(d);
+            }
+        }
+
+        delete infoStream;
+        // delete temporary index_writer_path
+        fs->delete_directory(index_writer_path.c_str());
+    
     } else {
         std::cout << "invalid operation: " << FLAGS_operation << "\n" << usage << std::endl;
         return -1;
