@@ -35,12 +35,14 @@ namespace doris {
 IndexBuilder::IndexBuilder(StorageEngine& engine, TabletSharedPtr tablet,
                            const std::vector<TColumn>& columns,
                            const std::vector<doris::TOlapTableIndex>& alter_inverted_indexes,
-                           bool is_drop_op)
+                           const doris::TOlapTableSchemaParam& schema_param, const int64_t& index_id, bool is_drop_op)
         : _engine(engine),
           _tablet(std::move(tablet)),
           _columns(columns),
           _alter_inverted_indexes(alter_inverted_indexes),
-          _is_drop_op(is_drop_op) {
+          _is_drop_op(is_drop_op),
+          _schema_param(schema_param),
+          _index_id(index_id){
     _olap_data_convertor = std::make_unique<vectorized::OlapBlockDataConvertor>();
 }
 
@@ -53,6 +55,8 @@ Status IndexBuilder::init() {
     for (auto inverted_index : _alter_inverted_indexes) {
         _alter_index_ids.insert(inverted_index.index_id);
     }
+    _schema.reset(new OlapTableSchemaParam());
+    RETURN_IF_ERROR(_schema->init(_schema_param));
     return Status::OK();
 }
 
@@ -67,7 +71,7 @@ Status IndexBuilder::update_inverted_index_info() {
     for (auto&& input_rowset : _input_rowsets) {
         TabletSchemaSPtr output_rs_tablet_schema = std::make_shared<TabletSchema>();
         const auto& input_rs_tablet_schema = input_rowset->tablet_schema();
-        output_rs_tablet_schema->copy_from(*input_rs_tablet_schema);
+        _build_output_tablet_schema(_index_id, _schema.get(), *input_rs_tablet_schema, output_rs_tablet_schema.get());
         size_t total_index_size = 0;
         auto* beta_rowset = reinterpret_cast<BetaRowset*>(input_rowset.get());
         auto size_st = beta_rowset->get_inverted_index_size(&total_index_size);
@@ -738,6 +742,29 @@ void IndexBuilder::gc_output_rowset() {
         }
         _engine.add_unused_rowset(output_rowset);
     }
+}
+
+void IndexBuilder::_build_output_tablet_schema(int64_t index_id, const doris::OlapTableSchemaParam *table_schema_param,
+                                               const doris::TabletSchema &ori_tablet_schema,
+                                               doris::TabletSchema *output_tablet_schema) {
+    output_tablet_schema->copy_from(ori_tablet_schema);
+    // find the right index id
+    int i = 0;
+    auto indexes = table_schema_param->indexes();
+    for (; i < indexes.size(); i++) {
+        if (indexes[i]->index_id == index_id) {
+            break;
+        }
+    }
+
+    if (!indexes.empty() && !indexes[i]->columns.empty() &&
+        indexes[i]->columns[0]->unique_id() >= 0) {
+        output_tablet_schema->build_current_tablet_schema(index_id, table_schema_param->version(),
+                                                    indexes[i], ori_tablet_schema);
+    }
+
+    output_tablet_schema->set_table_id(table_schema_param->table_id());
+    output_tablet_schema->set_db_id(table_schema_param->db_id());
 }
 
 } // namespace doris

@@ -1115,7 +1115,7 @@ Status StorageEngine::process_index_change_task(const TAlterInvertedIndexReq& re
     }
 
     IndexBuilderSharedPtr index_builder = std::make_shared<IndexBuilder>(
-            *this, tablet, request.columns, request.alter_inverted_indexes, request.is_drop_op);
+            *this, tablet, request.columns, request.alter_inverted_indexes, request.schema, request.index_id, request.is_drop_op);
     RETURN_IF_ERROR(_handle_index_change(index_builder));
     return Status::OK();
 }

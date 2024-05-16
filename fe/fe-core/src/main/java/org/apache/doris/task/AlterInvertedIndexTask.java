@@ -17,18 +17,35 @@
 
 package org.apache.doris.task;
 
+import org.apache.doris.alter.AlterCancelException;
+import org.apache.doris.alter.SchemaChangeHandler;
+import org.apache.doris.analysis.Analyzer;
+import org.apache.doris.analysis.DescriptorTable;
+import org.apache.doris.analysis.SlotDescriptor;
+import org.apache.doris.analysis.TupleDescriptor;
 import org.apache.doris.catalog.Column;
+import org.apache.doris.catalog.Database;
+import org.apache.doris.catalog.Env;
 import org.apache.doris.catalog.Index;
+import org.apache.doris.catalog.MaterializedIndexMeta;
+import org.apache.doris.catalog.OlapTable;
+import org.apache.doris.catalog.TableIf;
+import org.apache.doris.common.MetaNotFoundException;
 import org.apache.doris.thrift.TAlterInvertedIndexReq;
 import org.apache.doris.thrift.TColumn;
 import org.apache.doris.thrift.TOlapTableIndex;
+import org.apache.doris.thrift.TOlapTableIndexSchema;
+import org.apache.doris.thrift.TOlapTableSchemaParam;
 import org.apache.doris.thrift.TTaskType;
 
+import com.google.common.collect.Lists;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 /*
  * This task is used for alter table process, such as rollup and schema change
@@ -45,12 +62,13 @@ public class AlterInvertedIndexTask extends AgentTask {
     private List<Index> existIndexes;
     private boolean isDropOp = false;
     private long jobId;
+    private TOlapTableSchemaParam tOlapTableSchemaParam;
 
     public AlterInvertedIndexTask(long backendId, long dbId, long tableId,
             long partitionId, long indexId, long tabletId, int schemaHash,
             List<Index> existIndexes, List<Index> alterInvertedIndexes,
             List<Column> schemaColumns, boolean isDropOp, long taskSignature,
-            long jobId) {
+            long jobId) throws AlterCancelException {
         super(null, backendId, TTaskType.ALTER_INVERTED_INDEX, dbId, tableId,
                 partitionId, indexId, tabletId, taskSignature);
         this.tabletId = tabletId;
@@ -60,6 +78,7 @@ public class AlterInvertedIndexTask extends AgentTask {
         this.schemaColumns = schemaColumns;
         this.isDropOp = isDropOp;
         this.jobId = jobId;
+        this.tOlapTableSchemaParam = createSchema();
     }
 
     public long getTabletId() {
@@ -95,6 +114,7 @@ public class AlterInvertedIndexTask extends AgentTask {
     public TAlterInvertedIndexReq toThrift() {
         TAlterInvertedIndexReq req = new TAlterInvertedIndexReq();
         req.setTabletId(tabletId);
+        req.setIndexId(indexId);
         req.setSchemaHash(schemaHash);
         req.setIsDropOp(isDropOp);
         // set jonId for debugging in BE
@@ -124,6 +144,76 @@ public class AlterInvertedIndexTask extends AgentTask {
             }
             req.setColumns(columns);
         }
+        req.setSchema(tOlapTableSchemaParam);
         return req;
+    }
+
+    private TOlapTableSchemaParam createSchema() throws AlterCancelException {
+        Database db = Env.getCurrentInternalCatalog()
+                .getDbOrException(dbId, s -> new AlterCancelException("Database " + s + " does not exist"));
+        OlapTable table;
+        try {
+            table = (OlapTable) db.getTableOrMetaException(tableId, TableIf.TableType.OLAP);
+        } catch (MetaNotFoundException e) {
+            throw new AlterCancelException(e.getMessage());
+        }
+        Analyzer analyzer = new Analyzer(Env.getCurrentEnv(), null);
+        DescriptorTable descTable = analyzer.getDescTbl();
+        TupleDescriptor tupleDescriptor = descTable.createTupleDescriptor("DstTableTuple");
+
+        for (Column col : table.getFullSchema()) {
+            SlotDescriptor slotDesc = descTable.addSlotDescriptor(tupleDescriptor);
+            slotDesc.setIsMaterialized(true);
+            slotDesc.setColumn(col);
+            slotDesc.setIsNullable(col.isAllowNull());
+            slotDesc.setAutoInc(col.isAutoInc());
+        }
+
+        TOlapTableSchemaParam schemaParam = new TOlapTableSchemaParam();
+        schemaParam.setDbId(dbId);
+        schemaParam.setTableId(table.getId());
+        schemaParam.setVersion(table.getIndexMetaByIndexId(table.getBaseIndexId()).getSchemaVersion());
+        schemaParam.setIsStrictMode(false);
+
+        schemaParam.tuple_desc = tupleDescriptor.toThrift();
+        for (SlotDescriptor slotDesc : tupleDescriptor.getSlots()) {
+            schemaParam.addToSlotDescs(slotDesc.toThrift());
+        }
+
+        for (Map.Entry<Long, MaterializedIndexMeta> pair : table.getIndexIdToMeta().entrySet()) {
+            MaterializedIndexMeta indexMeta = pair.getValue();
+            List<String> columns = Lists.newArrayList();
+            List<TColumn> columnsDesc = Lists.newArrayList();
+            List<TOlapTableIndex> indexDesc = Lists.newArrayList();
+            columns.addAll(indexMeta.getSchema().stream().map(Column::getNonShadowName).collect(Collectors.toList()));
+            for (Column column : indexMeta.getSchema()) {
+                TColumn tColumn = column.toThrift();
+                // When schema change is doing, some modified column has prefix in name. Columns here
+                // is for the schema in rowset meta, which should be no column with shadow prefix.
+                // So we should remove the shadow prefix here.
+                if (column.getName().startsWith(SchemaChangeHandler.SHADOW_NAME_PREFIX)) {
+                    tColumn.setColumnName(column.getNonShadowName());
+                }
+                column.setIndexFlag(tColumn, table);
+                columnsDesc.add(tColumn);
+            }
+            List<Index> indexes = indexMeta.getIndexes();
+            if (indexes.size() == 0 && pair.getKey() == table.getBaseIndexId()) {
+                // for compatible with old version befor 2.0-beta
+                // if indexMeta.getIndexes() is empty, use table.getIndexes()
+                indexes = table.getIndexes();
+            }
+            for (Index index : indexes) {
+                TOlapTableIndex tIndex = index.toThrift();
+                indexDesc.add(tIndex);
+            }
+            TOlapTableIndexSchema indexSchema = new TOlapTableIndexSchema(pair.getKey(), columns,
+                    indexMeta.getSchemaHash());
+            indexSchema.setColumnsDesc(columnsDesc);
+            indexSchema.setIndexesDesc(indexDesc);
+            schemaParam.addToIndexes(indexSchema);
+        }
+        schemaParam.setIsPartialUpdate(false);
+        return schemaParam;
     }
 }

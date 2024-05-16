@@ -227,6 +227,8 @@ struct TAlterInvertedIndexReq {
     8: optional list<Descriptors.TColumn> columns
     9: optional i64 job_id
     10: optional i64 expiration
+    11: optional Descriptors.TOlapTableSchemaParam schema
+    12: optional i64 index_id
 }
 
 struct TTabletGcBinlogInfo {

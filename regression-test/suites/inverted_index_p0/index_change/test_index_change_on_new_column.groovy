@@ -67,7 +67,7 @@ suite("test_index_change_on_new_column") {
             `id` INT COMMENT "",
             `s` STRING COMMENT ""
         )
-        DUPLICATE KEY(`id`) DISTRIBUTED BY HASH(`id`)
+        DUPLICATE KEY(`id`) DISTRIBUTED BY HASH(`id`) BUCKETS 1
         PROPERTIES ( "replication_num" = "1" );
         """
 
@@ -90,10 +90,15 @@ suite("test_index_change_on_new_column") {
         wait_for_build_index_on_partition_finish(tableName, timeout)
     }
 
+    sql """ INSERT INTO ${tableName} VALUES
+        (2, 'hello world', "hello world")
+    """
+
     def show_result = sql "show index from ${tableName}"
     logger.info("show index from " + tableName + " result: " + show_result)
     assertEquals(show_result.size(), 1)
     assertEquals(show_result[0][2], "idx_s1")
 
     qt_select2 """ SELECT * FROM ${tableName}; """
+    qt_select3 """ SELECT * FROM ${tableName} WHERE s1 match_regexp 'hello world'; """
 }

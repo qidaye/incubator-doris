@@ -17,6 +17,7 @@
 
 #pragma once
 
+#include "exec/tablet_info.h"
 #include "olap/merger.h"
 #include "olap/olap_common.h"
 #include "olap/olap_define.h"
@@ -29,6 +30,7 @@
 #include "vec/olap/olap_data_convertor.h"
 
 namespace doris {
+class OlapTableSchemaParam;
 namespace segment_v2 {
 class InvertedIndexColumnWriter;
 class InvertedIndexFileWriter;
@@ -46,7 +48,7 @@ class IndexBuilder {
 public:
     IndexBuilder(StorageEngine& engine, TabletSharedPtr tablet, const std::vector<TColumn>& columns,
                  const std::vector<doris::TOlapTableIndex>& alter_inverted_indexes,
-                 bool is_drop_op = false);
+                 const doris::TOlapTableSchemaParam& schema_param, const int64_t& index_id, bool is_drop_op = false);
     ~IndexBuilder();
 
     Status init();
@@ -68,12 +70,20 @@ private:
                          const std::pair<int64_t, int64_t>& index_writer_sign, Field* field,
                          const uint8_t* null_map, const uint8_t** ptr, size_t num_rows);
 
+    void _build_output_tablet_schema(int64_t index_id,
+                                     const OlapTableSchemaParam* table_schema_param,
+                                     const TabletSchema& ori_tablet_schema,
+                                     TabletSchema* output_tablet_schema);
+
 private:
     StorageEngine& _engine;
     TabletSharedPtr _tablet;
     std::vector<TColumn> _columns;
     std::vector<doris::TOlapTableIndex> _alter_inverted_indexes;
     bool _is_drop_op;
+    doris::TOlapTableSchemaParam _schema_param;
+    std::unique_ptr<OlapTableSchemaParam> _schema;
+    int64_t _index_id;
     std::set<int32_t> _alter_index_ids;
     std::vector<RowsetSharedPtr> _input_rowsets;
     std::vector<RowsetSharedPtr> _output_rowsets;

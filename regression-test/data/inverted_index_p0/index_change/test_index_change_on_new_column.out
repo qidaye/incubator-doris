@@ -4,4 +4,5 @@
 
 -- !select2 --
 1	hello world	\N
+2	hello world	hello world
 
