@@ -488,6 +488,7 @@ Status Compaction::do_inverted_index_compaction() {
 
     OlapStopWatch inverted_watch;
 
+    // TODO : 删掉 rowid_conversion 检查
     int64_t cur_max_version = 0;
     {
         std::shared_lock rlock(_tablet->get_header_lock());
@@ -521,6 +522,7 @@ Status Compaction::do_inverted_index_compaction() {
     }
 
     RETURN_IF_ERROR(_tablet->check_rowid_conversion(_output_rowset, location_map));
+    // TODO : 删掉 rowid_conversion 检查
 
     // translation vec
     // <<dest_idx_num, dest_docId>>
@@ -810,14 +812,24 @@ Status Compaction::do_inverted_index_compaction() {
 }
 
 void Compaction::construct_skip_inverted_index(RowsetWriterContext& ctx) {
+    // 遍历当前表的所有索引：
     for (const auto& index : _cur_tablet_schema->indexes()) {
+        // 如果索引类型不是倒排索引（INVERTED），则跳过该索引。
         if (index.index_type() != IndexType::INVERTED) {
             continue;
         }
 
+        // 获取列的唯一 ID：
+        // TODO:
+        // 增加保护性代码，跳过该索引，防止 coredump
+        // 打印出 index 信息，dump cur_tablet_schema 信息，辅助定位问题
         auto col_unique_id = index.col_unique_ids()[0];
+        // 这个 lambda 函数用于检查给定的行集（Rowset）是否具有倒排索引。
         auto has_inverted_index = [&](const RowsetSharedPtr& src_rs) {
             auto* rowset = static_cast<BetaRowset*>(src_rs.get());
+            // 检查是否跳过索引压缩：
+            // TODO
+            // 细化跳过逻辑，v1 浪费；v2 一列出错，所有列跳过
             if (rowset->is_skip_index_compaction(col_unique_id)) {
                 LOG(WARNING) << "tablet[" << _tablet->tablet_id() << "] rowset["
                              << rowset->rowset_id() << "] column_unique_id[" << col_unique_id
@@ -825,13 +837,17 @@ void Compaction::construct_skip_inverted_index(RowsetWriterContext& ctx) {
                 return false;
             }
 
+            // 检查文件系统是否存在，如果不存在则记录警告日志并返回 false。
             const auto& fs = rowset->rowset_meta()->fs();
             if (!fs) {
                 LOG(WARNING) << "get fs failed, resource_id="
                              << rowset->rowset_meta()->resource_id();
                 return false;
             }
-
+            // 获取索引元数据，如果索引元数据为空则记录警告日志并返回 false。
+            // TODO
+            // 1. variant get_inverted_index 会有问题，直接判断
+            // 2. rowset drop index 后，获取 tablet_schema 是否有问题
             const auto* index_meta = rowset->tablet_schema()->get_inverted_index(col_unique_id, "");
             if (index_meta == nullptr) {
                 LOG(WARNING) << "tablet[" << _tablet->tablet_id() << "] column_unique_id["
@@ -839,6 +855,10 @@ void Compaction::construct_skip_inverted_index(RowsetWriterContext& ctx) {
                 return false;
             }
 
+            // 检查每个段的索引文件：
+            // 遍历行集的每个段，检查倒排索引文件是否存在并且有效。
+            // 如果任何一个段的索引文件无效或损坏，则记录警告日志并返回 false。
+            // 如果索引文件数量小于 3，则记录警告日志并返回 false。
             for (auto i = 0; i < rowset->num_segments(); i++) {
                 // TODO: inverted_index_path
                 auto seg_path = rowset->segment_path(i);
@@ -876,6 +896,8 @@ void Compaction::construct_skip_inverted_index(RowsetWriterContext& ctx) {
                     reader->list(&files);
                     reader->close();
 
+                    // TODO
+                    // 改一下 comment
                     // why is 3?
                     // bkd index will write at least 3 files
                     if (files.size() < 3) {
@@ -894,9 +916,11 @@ void Compaction::construct_skip_inverted_index(RowsetWriterContext& ctx) {
             return true;
         };
 
+        // 检查所有行集是否具有倒排索引：使用 std::all_of 检查所有输入行集是否都有倒排索引。
         bool all_have_inverted_index = std::all_of(_input_rowsets.begin(), _input_rowsets.end(),
                                                    std::move(has_inverted_index));
-
+        // 如果所有行集都具有倒排索引，则将列的唯一 ID 添加到 ctx.skip_inverted_index 中。
+        // TODO: slice_type 检查提到最前面
         if (all_have_inverted_index &&
             field_is_slice_type(_cur_tablet_schema->column_by_uid(col_unique_id).type())) {
             ctx.skip_inverted_index.insert(col_unique_id);

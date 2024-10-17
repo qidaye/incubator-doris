@@ -257,7 +257,7 @@ Status VerticalSegmentWriter::_create_column_writer(uint32_t cid, const TabletCo
     }
 
     std::unique_ptr<ColumnWriter> writer;
-    RETURN_IF_ERROR(ColumnWriter::create(opts, &column, _file_writer, &writer));
+    RETURN_IF_ERROR(ColumnWriter::crecreate_rowset_writerate(opts, &column, _file_writer, &writer));
     RETURN_IF_ERROR(writer->init());
     _column_writers.push_back(std::move(writer));
 

@@ -80,6 +80,7 @@ struct RowsetWriterContext {
     int64_t newest_write_timestamp = -1;
     bool enable_unique_key_merge_on_write = false;
     // store column_unique_id to skip write inverted index
+    // TODO: rename => to_do_index_compaction
     std::set<int32_t> skip_inverted_index;
     DataWriteType write_type = DataWriteType::TYPE_DEFAULT;
     BaseTabletSPtr tablet = nullptr;

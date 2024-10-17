@@ -212,6 +212,7 @@ Status SegmentWriter::_create_column_writer(uint32_t cid, const TabletColumn& co
         // skip write inverted index for index compaction
         skip_inverted_index = _opts.rowset_ctx->skip_inverted_index.count(column.unique_id()) > 0;
     }
+    // TODO 删掉 skip_write_index_on_load 相关逻辑
     // skip write inverted index on load if skip_write_index_on_load is true
     if (_opts.write_type == DataWriteType::TYPE_DIRECT && schema->skip_write_index_on_load()) {
         skip_inverted_index = true;
