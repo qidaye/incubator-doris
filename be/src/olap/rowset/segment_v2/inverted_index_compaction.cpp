@@ -55,6 +55,7 @@ Status compact_column(int64_t index_id, std::vector<lucene::store::Directory*>& 
     // 3. 执行索引压缩。
     index_writer->indexCompaction(src_index_dirs, dest_index_dirs, trans_vec,
                                   dest_segment_num_rows);
+    // TODO 增加 debug_point 模拟 index_compaction 出错
 
     // 4. 关闭删除索引写入器。
     index_writer->close();

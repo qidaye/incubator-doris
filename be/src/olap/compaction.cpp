@@ -747,12 +747,14 @@ Status Compaction::do_inverted_index_compaction() {
             continue;
         }
 
+        // TODO dest 改为 shared_ptr
         std::vector<lucene::store::Directory*> dest_index_dirs(dest_segment_num);
         std::vector<lucene::store::Directory*> src_index_dirs(src_segment_num);
         try {
             for (int src_segment_id = 0; src_segment_id < src_segment_num; src_segment_id++) {
                 auto src_dir =
                         DORIS_TRY(inverted_index_file_readers[src_segment_id]->open(index_meta));
+                // TODO 增加debug_point
                 src_index_dirs[src_segment_id] = src_dir.release();
             }
             for (int dest_segment_id = 0; dest_segment_id < dest_segment_num; dest_segment_id++) {
