@@ -192,6 +192,9 @@ public class Index implements Writable {
     }
 
     public List<Integer> getColumnUniqueIds() {
+        if (columnUniqueIds == null) {
+            columnUniqueIds = Lists.newArrayList();
+        }
         return columnUniqueIds;
     }
 
@@ -260,7 +263,9 @@ public class Index implements Writable {
         if (properties != null) {
             tIndex.setProperties(properties);
         }
-        tIndex.setColumnUniqueIds(columnUniqueIds);
+        if (columnUniqueIds != null) {
+            tIndex.setColumnUniqueIds(columnUniqueIds);
+        }
         return tIndex;
     }
 
@@ -268,10 +273,12 @@ public class Index implements Writable {
         OlapFile.TabletIndexPB.Builder builder = OlapFile.TabletIndexPB.newBuilder();
         builder.setIndexId(indexId);
         builder.setIndexName(indexName);
-        for (Integer columnUniqueId : columnUniqueIds) {
-            Column column = columnMap.get(columnUniqueId);
-            if (column != null) {
-                builder.addColUniqueId(column.getUniqueId());
+        if (columnUniqueIds != null) {
+            for (Integer columnUniqueId : columnUniqueIds) {
+                Column column = columnMap.get(columnUniqueId);
+                if (column != null) {
+                    builder.addColUniqueId(column.getUniqueId());
+                }
             }
         }
 
