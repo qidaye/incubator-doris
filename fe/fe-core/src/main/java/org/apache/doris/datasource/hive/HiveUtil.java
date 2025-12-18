@@ -109,6 +109,12 @@ public final class HiveUtil {
             return MapredParquetInputFormat.class;
         }
 
+        // Older hive/hadoop LZO text input format, can be handled as TextInputFormat.
+        // Use string match to avoid hard dependency on the deprecated class.
+        if ("com.hadoop.mapred.DeprecatedLzoTextInputFormat".equals(inputFormatName)) {
+            return TextInputFormat.class;
+        }
+
         Class<?> clazz = conf.getClassByName(inputFormatName);
         return (Class<? extends InputFormat<?, ?>>) clazz.asSubclass(InputFormat.class);
     }
